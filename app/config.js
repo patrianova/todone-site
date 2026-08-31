@@ -1,4 +1,4 @@
-// CloudKit JS API token for the To-did web app.
-// CloudKit Console → iCloud.app.todid → Settings → Tokens & Keys → API Tokens
-// → create "todid-web", paste it here.
-window.TODID_CK_TOKEN = "";
+// CloudKit JS API token for the To-did web app (container iCloud.app.todid).
+// This token type is made to be embedded in public pages; access is always
+// scoped to the signed-in user's own private database.
+window.TODID_CK_TOKEN = "a3c597b33ba10e3f9fc4962ce8bace640b4eabd41be938b33dc110665c488115";
