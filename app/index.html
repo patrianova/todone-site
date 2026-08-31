@@ -91,14 +91,25 @@
 </form>
 
 <script src="./config.js"></script>
-<script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
 <script>
 const ZONE = { zoneName: "com.apple.coredata.cloudkit.zone" };
-let db, records = [];
+const BASE = "https://api.apple-cloudkit.com/database/1/iCloud.app.todid/production/private";
+let records = [];
 
 function show(id) {
   for (const s of ["setup","signin","list"]) document.getElementById(s).classList.toggle("hidden", s!==id);
   document.getElementById("add").classList.toggle("hidden", id!=="list");
+}
+function session() { try { return localStorage.getItem("ckSession") || ""; } catch { return ""; } }
+function api(path) {
+  let u = `${BASE}/${path}?ckAPIToken=${window.TODID_CK_TOKEN}`;
+  const s = session();
+  if (s) u += `&ckSession=${encodeURIComponent(s)}`;
+  return u;
+}
+async function post(path, body) {
+  const r = await fetch(api(path), {method:"POST", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(body)});
+  return { status: r.status, json: await r.json().catch(() => ({})) };
 }
 
 function bucketOf(r) {
@@ -113,14 +124,11 @@ function bucketOf(r) {
   if (days <= 7) return "This week";
   return "Later";
 }
-
 function dueLabel(r) {
   const due = r.fields.CD_dueAt && r.fields.CD_dueAt.value;
   if (!due) return "";
-  return new Date(due).toLocaleString(undefined, {weekday:"short", month:"short", day:"numeric",
-                                                  hour:"numeric", minute:"2-digit"});
+  return new Date(due).toLocaleString(undefined, {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
 }
-
 function render() {
   const open = records.filter(r => !(r.fields.CD_completedAt && r.fields.CD_completedAt.value));
   const done = records.filter(r =>  (r.fields.CD_completedAt && r.fields.CD_completedAt.value));
@@ -128,18 +136,17 @@ function render() {
   const groups = {};
   for (const r of open) (groups[bucketOf(r)] ??= []).push(r);
   const host = document.getElementById("buckets"); host.innerHTML = "";
-  const section = (name, items, isDone) => {
+  const section = (name, items) => {
     if (!items || !items.length) return;
     const h = document.createElement("h2"); h.className = "bucket";
     h.innerHTML = `${name} <span>${items.length}</span>`; host.appendChild(h);
-    for (const r of items) host.appendChild(row(r, isDone));
+    for (const r of items) host.appendChild(row(r));
   };
   for (const b of order) section(b, (groups[b]||[]).sort((a,c)=>(a.fields.CD_dueAt?.value??9e15)-(c.fields.CD_dueAt?.value??9e15)));
   section("Done", done.sort((a,c)=>(c.fields.CD_completedAt.value)-(a.fields.CD_completedAt.value)));
   document.getElementById("status").textContent = open.length ? "" : "Nothing to do 🎉";
 }
-
-function row(r, isDone) {
+function row(r) {
   const el = document.createElement("div");
   const completed = r.fields.CD_completedAt && r.fields.CD_completedAt.value;
   el.className = "task" + (completed ? " done" : "");
@@ -157,34 +164,30 @@ function row(r, isDone) {
 
 async function refresh() {
   document.getElementById("status").textContent = "Loading…";
-  records = [];
-  let resp = await db.performQuery({
-    recordType: "CD_TodoTask",
-    filterBy: [{fieldName:"CD_entityName", comparator:"EQUALS", fieldValue:{value:"TodoTask"}}],
-  }, { zoneID: ZONE, resultsLimit: 200 });
-  while (true) {
-    if (resp.hasErrors) { document.getElementById("status").textContent = "Load failed: " + resp.errors[0].reason; return; }
-    records.push(...resp.records);
-    if (!resp.moreComing) break;
-    resp = await db.performQuery(resp);
+  const q = await post("records/query", { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
+  if (q.status !== 200) {
+    document.getElementById("status").textContent =
+      "Load failed: " + (q.json.reason || q.json.serverErrorCode || q.status);
+    if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
+      try { localStorage.removeItem("ckSession"); } catch {}
+    }
+    return;
   }
+  records = q.json.records || [];
   render();
 }
-
 async function toggle(r, complete) {
-  const rec = { recordName: r.recordName, recordChangeTag: r.recordChangeTag,
-                recordType: "CD_TodoTask",
-                fields: { CD_completedAt: { value: complete ? Date.now() : null } } };
-  const resp = await db.saveRecords([rec], { zoneID: ZONE });
-  if (!resp.hasErrors) refresh(); else alert(resp.errors[0].reason);
+  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "update",
+    record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag, recordType: "CD_TodoTask",
+              fields: { CD_completedAt: complete ? { value: Date.now() } : { value: null } } } }] });
+  if (resp.status === 200) refresh(); else alert(resp.json.reason || resp.status);
 }
-
 async function del(r) {
-  if (!confirm(`Delete “${r.fields.CD_title?.value}”?`)) return;
-  const resp = await db.deleteRecords([{recordName: r.recordName}], { zoneID: ZONE });
-  if (!resp.hasErrors) refresh(); else alert(resp.errors[0].reason);
+  if (!confirm("Delete " + (r.fields.CD_title?.value || "this task") + "?")) return;
+  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "forceDelete",
+    record: { recordName: r.recordName } }] });
+  if (resp.status === 200) refresh(); else alert(resp.json.reason || resp.status);
 }
-
 document.getElementById("add").addEventListener("submit", async e => {
   e.preventDefault();
   const title = document.getElementById("newTitle").value.trim();
@@ -197,43 +200,38 @@ document.getElementById("add").addEventListener("submit", async e => {
     CD_createdAt: { value: Date.now() },
   };
   if (dueRaw) fields.CD_dueAt = { value: new Date(dueRaw).getTime() };
-  const resp = await db.saveRecords([{ recordType: "CD_TodoTask", zoneID: ZONE, fields }]);
-  if (resp.hasErrors) { alert(resp.errors[0].reason); return; }
+  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "create",
+    record: { recordType: "CD_TodoTask", fields } }] });
+  if (resp.status !== 200) { alert(resp.json.reason || resp.status); return; }
   document.getElementById("newTitle").value = ""; document.getElementById("newDue").value = "";
   refresh();
 });
 
-(function boot() {
+(async function boot() {
   if (!window.TODID_CK_TOKEN) { show("setup"); return; }
-  CloudKit.configure({ containers: [{
-    containerIdentifier: "iCloud.app.todid",
-    apiTokenAuth: { apiToken: window.TODID_CK_TOKEN, persist: true },
-    environment: "production",
-  }]});
-  const container = CloudKit.getDefaultContainer();
-  db = container.privateCloudDatabase;
-  // Full-page redirect flow: CloudKit JS consumes the ckSession URL param on return.
-  container.setUpAuth().then(identity => {
-    if (identity) { onSignedIn(container, identity); return; }
-    show("signin");
-    document.getElementById("signinBtn").onclick = async () => {
-      try {
-        const r = await fetch("https://api.apple-cloudkit.com/database/1/iCloud.app.todid/production/private/users/current?ckAPIToken=" + window.TODID_CK_TOKEN);
-        const j = await r.json();
-        if (j.redirectURL) { location.href = j.redirectURL; }
-        else { document.getElementById("signinErr").textContent = "No sign-in URL: " + (j.reason || r.status); }
-      } catch (e) { document.getElementById("signinErr").textContent = String(e); }
-    };
-    container.whenUserSignsIn().then(id => onSignedIn(container, id));
-  }).catch(e => { show("signin"); document.getElementById("signinErr").textContent = String(e); });
+  const params = new URLSearchParams(location.search);
+  const fromURL = params.get("ckSession");
+  if (fromURL) {
+    try { localStorage.setItem("ckSession", fromURL); } catch {}
+    history.replaceState(null, "", location.pathname);
+  }
+  if (session()) {
+    const me = await fetch(api("users/current"));
+    if (me.status === 200) {
+      const id = await me.json();
+      document.getElementById("whoami").textContent = (id.nameComponents && id.nameComponents.givenName) || "signed in";
+      show("list"); refresh(); return;
+    }
+    try { localStorage.removeItem("ckSession"); } catch {}
+  }
+  show("signin");
+  document.getElementById("signinBtn").onclick = async () => {
+    const r = await fetch(api("users/current"));
+    const j = await r.json().catch(() => ({}));
+    if (j.redirectURL) location.href = j.redirectURL;
+    else document.getElementById("signinErr").textContent = "No sign-in URL (" + r.status + ")";
+  };
 })();
-
-function onSignedIn(container, identity) {
-  document.getElementById("whoami").textContent = identity.nameComponents
-    ? `${identity.nameComponents.givenName ?? ""}` : "signed in";
-  show("list"); refresh();
-  container.whenUserSignsOut().then(() => location.reload());
-}
 </script>
 </body>
 </html>
