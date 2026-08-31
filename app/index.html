@@ -415,7 +415,7 @@ function row(r) {
 async function refreshQuota() {
   if (!ckUser) return;
   try {
-    const r = await fetch(PROXY.replace("/v1/capture", "/v1/quota"),
+    const r = await fetch(API + "/v1/quota",
       { headers: { "X-Todid-User": ckUser } });
     if (!r.ok) return;
     const q = await r.json();
@@ -472,7 +472,9 @@ async function rename(r) {
 }
 
 /* ---- capture through the model (same proxy the apps use) ------------ */
-const PROXY = "https://todone-capture-owi5vfwija-uc.a.run.app/v1/capture";
+const SAME_ORIGIN_API = /(^|\.)(to-did\.app|todone-51870\.web\.app|todone-51870\.firebaseapp\.com)$/.test(location.hostname);
+const API = SAME_ORIGIN_API ? "" : "https://todone-capture-owi5vfwija-uc.a.run.app";
+const PROXY = API + "/v1/capture";
 let ckUser = "";
 function deviceID() {
   try {
