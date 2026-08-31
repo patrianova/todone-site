@@ -121,6 +121,8 @@
     flex:none; margin-top:1px; cursor:pointer; background:none; position:relative; padding:0;
   }
   .check:hover { border-color: var(--accent); }
+  .check { transition: background-color .12s ease, border-color .12s ease, transform .12s ease; }
+  .check:active { transform: scale(.88); }
   .task.overdue .check { border-color:var(--accent); }
   .task.is-done .check { background:var(--accent); border-color:var(--accent); }
   .task.is-done .check::after {
@@ -507,28 +509,64 @@ async function refresh() {
   records = q.json.records || [];
   render();
 }
+/* Optimistic: the row flips now and the write happens behind it. Waiting for the
+   round trip (and then a re-query) made every check feel broken. */
 async function toggle(r, complete) {
+  const before = r.fields.CD_completedAt;
+  r.fields.CD_completedAt = complete ? { value: Date.now() } : { value: null };
+  render();
   const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
               fields: { CD_completedAt: complete ? { value: Date.now() } : { value: null } } } }] });
-  if (resp.status === 200) refresh(); else say("Couldn't save: " + (resp.json.reason || resp.status));
+  if (resp.status === 200) {
+    // Keep the new change tag, or the next edit of this row is rejected as a conflict.
+    const fresh = (resp.json.records || [])[0];
+    if (fresh) {
+      const i = records.findIndex(x => x.recordName === fresh.recordName);
+      if (i >= 0) records[i] = fresh;
+      render();
+    }
+  } else {
+    r.fields.CD_completedAt = before;
+    render();
+    say("Couldn't save that — " + (resp.json.reason || resp.status));
+  }
 }
 async function del(r) {
   if (!confirm("Delete “" + titleOf(r) + "”?")) return;
+  const index = records.findIndex(x => x.recordName === r.recordName);
+  records = records.filter(x => x.recordName !== r.recordName);
+  render();
   const resp = await post("records/modify", { zoneID: ZONE,
     operations: [{ operationType:"forceDelete", record: { recordName: r.recordName } }] });
-  if (resp.status === 200) { say("Deleted.", "said"); refresh(); }
-  else say("Couldn't delete: " + (resp.json.reason || resp.status));
+  if (resp.status === 200) { say("Deleted.", "said"); }
+  else {
+    records.splice(Math.max(0, index), 0, r);
+    render();
+    say("Couldn't delete that — " + (resp.json.reason || resp.status));
+  }
 }
 async function rename(r) {
   const next = prompt("Rename task", titleOf(r));
   if (next === null) return;
   const title = next.trim();
   if (!title || title === titleOf(r)) return;
+  const before = r.fields.CD_title;
+  r.fields.CD_title = { value: title };
+  render();
   const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
               fields: { CD_title: { value: title } } } }] });
-  if (resp.status === 200) refresh(); else say("Couldn't rename: " + (resp.json.reason || resp.status));
+  if (resp.status === 200) {
+    const fresh = (resp.json.records || [])[0];
+    if (fresh) {
+      const i = records.findIndex(x => x.recordName === fresh.recordName);
+      if (i >= 0) { records[i] = fresh; render(); }
+    }
+  } else {
+    r.fields.CD_title = before; render();
+    say("Couldn't rename that — " + (resp.json.reason || resp.status));
+  }
 }
 
 /* ---- capture through the model (same proxy the apps use) ------------ */
