@@ -64,6 +64,9 @@
     display:flex; flex-direction:column; gap:8px;
   }
   .side .who { font-size:14px; color:var(--muted); }
+  .side .allowance { font-size:13px; color:var(--faint); }
+  .side .allowance.low { color:var(--accent); font-weight:600; }
+  .side .upgrade { font-size:13px; color:var(--accent) !important; font-weight:600; }
   .side .foot a, .side .foot button {
     font-size:13px; color:var(--faint); background:none; border:none; padding:0;
     font:inherit; font-size:13px; cursor:pointer; text-align:left;
@@ -209,6 +212,8 @@
     </nav>
     <div class="foot">
       <div class="who" id="whoami"></div>
+      <div class="allowance" id="allowance"></div>
+      <a class="upgrade hidden" id="upgrade" href="/todone-site/#pricing">Get To-did Pro — unlimited captures</a>
       <a href="/todone-site/">About To-did</a>
       <a href="/todone-site/privacy/">Privacy</a>
       <button id="signout" class="hidden">Sign out</button>
@@ -407,6 +412,27 @@ function row(r) {
 }
 
 /* ---- data actions --------------------------------------------------- */
+async function refreshQuota() {
+  if (!ckUser) return;
+  try {
+    const r = await fetch(PROXY.replace("/v1/capture", "/v1/quota"),
+      { headers: { "X-Todid-User": ckUser } });
+    if (!r.ok) return;
+    const q = await r.json();
+    const el = $("allowance");
+    if (q.pro) { el.textContent = "To-did Pro · unlimited"; el.classList.remove("low"); }
+    else {
+      el.textContent = `${q.remaining} of ${q.limit} free captures left`;
+      el.classList.toggle("low", q.remaining <= 3);
+      if (q.remaining <= 0) showUpgrade();
+    }
+  } catch {}
+}
+function showUpgrade() {
+  $("allowance").classList.add("low");
+  $("upgrade").classList.remove("hidden");
+}
+
 async function refresh() {
   const q = await post("records/query",
     { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
@@ -447,6 +473,7 @@ async function rename(r) {
 
 /* ---- capture through the model (same proxy the apps use) ------------ */
 const PROXY = "https://todone-capture-owi5vfwija-uc.a.run.app/v1/capture";
+let ckUser = "";
 function deviceID() {
   try {
     let d = localStorage.getItem("todidWebDevice");
@@ -485,9 +512,15 @@ async function capture(utterance, audioB64) {
   let resp;
   try {
     const r = await fetch(PROXY, { method:"POST",
-      headers: { "Content-Type":"application/json", "X-Todid-Device": deviceID() },
+      headers: { "Content-Type":"application/json", "X-Todid-Device": deviceID(),
+                 "X-Todid-User": ckUser },
       body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
+    if (r.status === 429) {
+      say(resp.message || "That's this month's free captures.");
+      showUpgrade();
+      return;
+    }
     if (!r.ok) { say("Capture failed: " + (resp.message || resp.error || r.status)); return; }
   } catch (e) { say("Capture failed: " + e); return; }
 
@@ -524,6 +557,7 @@ async function capture(utterance, audioB64) {
   }
   say(agent.reply || "Done.");
   refresh();
+  refreshQuota();
 }
 
 /* ---- microphone: click to talk, click to send ------------------------ */
@@ -622,6 +656,8 @@ document.addEventListener("keydown", e => {
       const id = await me.json();
       const name = (id.nameComponents && id.nameComponents.givenName) || "Signed in";
       $("whoami").textContent = name;
+      ckUser = (id.userRecordName) || (id.userRecord && id.userRecord.recordName) || "";
+      refreshQuota();
       $("signout").classList.remove("hidden");
       show("list");
       say("Loading…", true);
