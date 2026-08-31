@@ -366,6 +366,30 @@ async function post(path, body) {
   return { status: r.status, json: await r.json().catch(() => ({})) };
 }
 
+/* A user who has never run the iPhone or Mac app has no CloudKit zone yet — the
+   apps create it on first launch. The web app has to create it too, or the first
+   capture dies with "Zone does not exist". Safe to call repeatedly. */
+let zoneReady = false;
+async function ensureZone() {
+  if (zoneReady) return true;
+  // Apple documents one body shape; accept the other too rather than let a
+  // first-ever user hit a dead end over a payload detail.
+  const shapes = [
+    { operations: [{ operationType: "create", zone: { zoneID: ZONE } }] },
+    { zones: [{ zoneID: ZONE, operationType: "create" }] },
+  ];
+  for (const body of shapes) {
+    const r = await post("zones/modify", body);
+    const text = JSON.stringify(r.json || {});
+    if (r.status === 200 || /already.?exist/i.test(text)) { zoneReady = true; return true; }
+  }
+  return false;
+}
+function zoneMissing(payload) {
+  const s = JSON.stringify(payload || {});
+  return /ZONE_NOT_FOUND|Zone does not exist/i.test(s);
+}
+
 /* ---- rendering ----------------------------------------------------- */
 function isDone(r) { return !!(r.fields.CD_completedAt && r.fields.CD_completedAt.value); }
 function dueOf(r) { return r.fields.CD_dueAt && r.fields.CD_dueAt.value; }
@@ -498,6 +522,13 @@ function showUpgrade() {
 async function refresh() {
   const q = await post("records/query",
     { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
+  if (q.status !== 200 && zoneMissing(q.json)) {
+    // First time this iCloud account has ever seen To-did.
+    await ensureZone();
+    records = [];
+    render();
+    return;
+  }
   if (q.status !== 200) {
     say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
     if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
@@ -656,7 +687,11 @@ async function capture(utterance, audioB64) {
     }
   }
   if (ops.length) {
-    const w = await post("records/modify", { zoneID: ZONE, operations: ops });
+    let w = await post("records/modify", { zoneID: ZONE, operations: ops });
+    if (w.status !== 200 && zoneMissing(w.json)) {
+      await ensureZone();
+      w = await post("records/modify", { zoneID: ZONE, operations: ops });
+    }
     if (w.status !== 200) { busy = false; say("Nothing was saved — " + (w.json.reason || w.status)); return; }
     // Show the new tasks immediately: CloudKit queries are eventually consistent,
     // so waiting on a re-query is what made captures look like they vanished.
@@ -785,6 +820,7 @@ document.addEventListener("keydown", e => {
       $("signout").classList.remove("hidden");
       show("list");
       say("");
+      await ensureZone();
       await refresh();
       return;
     }
