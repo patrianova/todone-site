@@ -96,7 +96,7 @@
   .search input::placeholder { color:var(--faint); }
 
   /* list ------------------------------------------------------------- */
-  .scroll { flex:1; overflow-y:auto; padding:26px 40px 8px; }
+  .scroll { flex:1; min-height:0; overflow-y:auto; padding:26px 40px 12px; }
   .bucket { display:flex; align-items:center; gap:10px; padding:22px 0 4px; }
   .bucket:first-child { padding-top:0; }
   .bucket .name {
@@ -155,16 +155,44 @@
   #micBtn.recording { background:var(--ink); }
   #addBtn { background:var(--ink); }
 
-  .reply {
-    padding:0 40px 12px; font-size:14px; color:var(--body); min-height:20px;
-    display:flex; align-items:center; gap:10px;
+  /* status surface: sits above the composer, never over the list */
+  .status {
+    flex:none; margin:0 40px 14px; padding:14px 18px; border-radius:16px;
+    display:none; align-items:center; gap:12px; font-size:15px; line-height:1.4;
+    background:var(--hair); color:var(--ink);
   }
-  .reply .dot {
-    width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none;
-    animation:pulse 1.6s ease-in-out infinite;
+  .status.on { display:flex; }
+  .status.live { background:rgba(255,46,119,.08); box-shadow:inset 0 0 0 1.5px rgba(255,46,119,.35); }
+  .status.busy { background:var(--hair); }
+  .status.said { background:rgba(255,46,119,.06); }
+  .status .text { flex:1; min-width:0; }
+  .status .hint { color:var(--muted); font-size:13px; margin-top:2px; }
+  .status .timer { font-variant-numeric:tabular-nums; font-weight:600; color:var(--accent); }
+  .status .dot {
+    width:9px; height:9px; border-radius:50%; background:var(--accent); flex:none;
+    animation:pulse 1.2s ease-in-out infinite;
   }
-  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
-  @media (prefers-reduced-motion: reduce) { .reply .dot { animation:none; } }
+  .status .spin {
+    width:15px; height:15px; flex:none; border-radius:50%;
+    border:2px solid var(--stroke); border-top-color:var(--accent);
+    animation:spin .8s linear infinite;
+  }
+  .status .tick { color:var(--accent); flex:none; line-height:0; }
+  .bars { display:flex; align-items:center; gap:3px; height:20px; flex:none; }
+  .bars span { width:3px; border-radius:100px; background:var(--accent);
+               animation:bar .5s ease-in-out infinite alternate; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes bar { from { transform:scaleY(.3); } to { transform:scaleY(1); } }
+  #micBtn.recording { background:var(--ink); animation:none; }
+  #micBtn.recording::after {
+    content:""; position:absolute; inset:-5px; border-radius:50%;
+    box-shadow:0 0 0 2px rgba(255,46,119,.4); animation:pulse 1.2s ease-in-out infinite;
+  }
+  #micBtn { position:relative; }
+  @media (prefers-reduced-motion: reduce) {
+    .status .dot, .status .spin, .bars span, #micBtn.recording::after { animation:none; }
+  }
 
   /* gates ------------------------------------------------------------ */
   .gate {
@@ -193,7 +221,7 @@
     .scroll { padding:20px 20px 4px; }
     .composer { padding:14px 20px 20px; gap:10px; }
     .circlebtn { width:48px; height:48px; }
-    .reply { padding:0 20px 10px; }
+    .status { margin:0 20px 12px; }
     #menuBtn { display:flex !important; }
   }
 </style>
@@ -252,7 +280,7 @@
 
       <div class="scroll"><div id="buckets"></div></div>
 
-      <div class="reply" id="status"></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
 
       <form class="composer" id="add">
         <input id="newTitle" placeholder="Say it or type it — any language…" autocomplete="off">
@@ -284,11 +312,37 @@ const $ = id => document.getElementById(id);
 function show(id) {
   for (const s of ["setup","signin","list"]) $(s).classList.toggle("hidden", s !== id);
 }
-function say(text, busy) {
-  $("status").innerHTML = "";
+let sayTimer = null;
+/**
+ * The one place the app tells you what it is doing.
+ *  kind: "live" (recording) | "busy" (thinking) | "said" (the agent replied) | "" (plain/error)
+ */
+function say(text, kind, hint) {
+  const el = $("status");
+  clearTimeout(sayTimer);
+  el.className = "status";
   if (!text) return;
-  if (busy) { const d = document.createElement("span"); d.className = "dot"; $("status").appendChild(d); }
-  $("status").appendChild(document.createTextNode(text));
+  el.classList.add("on");
+  if (kind) el.classList.add(kind);
+  const lead =
+    kind === "live" ? '<span class="dot"></span>' :
+    kind === "busy" ? '<span class="spin"></span>' :
+    kind === "said" ? '<span class="tick"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : "";
+  const bars = kind === "live"
+    ? '<span class="bars">' + [12,20,15,18,10].map((h,i) =>
+        `<span style="height:${h}px;animation-duration:${0.38 + i * 0.06}s"></span>`).join("") + "</span>"
+    : "";
+  el.innerHTML = `${lead}<span class="text"></span>${bars}`;
+  const t = el.querySelector(".text");
+  t.textContent = text;
+  if (hint) {
+    const h = document.createElement("div");
+    h.className = "hint";
+    h.textContent = hint;
+    t.appendChild(h);
+  }
+  // Replies and errors fade; live/busy states persist until they change.
+  if (kind === "said" || !kind) sayTimer = setTimeout(() => { el.className = "status"; }, 9000);
 }
 
 /* ---- CloudKit REST ------------------------------------------------- */
@@ -457,7 +511,7 @@ async function del(r) {
   if (!confirm("Delete “" + titleOf(r) + "”?")) return;
   const resp = await post("records/modify", { zoneID: ZONE,
     operations: [{ operationType:"forceDelete", record: { recordName: r.recordName } }] });
-  if (resp.status === 200) { say("Deleted."); refresh(); }
+  if (resp.status === 200) { say("Deleted.", "said"); refresh(); }
   else say("Couldn't delete: " + (resp.json.reason || resp.status));
 }
 async function rename(r) {
@@ -507,7 +561,8 @@ function contextBlock(utterance) {
   return lines.join("\n");
 }
 async function capture(utterance, audioB64) {
-  say("Thinking…", true);
+  say(audioB64 ? "Working out what you said…" : "Working out what you meant…", "busy",
+      "Reading the dates and filing it.");
   const parts = [];
   if (audioB64) parts.push({ inline_data: { mime_type:"audio/wav", data: audioB64 } });
   parts.push({ text: contextBlock(utterance || "") });
@@ -519,16 +574,17 @@ async function capture(utterance, audioB64) {
       body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
     if (r.status === 429) {
-      say(resp.message || "That's this month's free captures.");
+      say(resp.message || "That's this month's free captures.", "",
+          "To-did Pro is unlimited — see the plans.");
       showUpgrade();
       return;
     }
-    if (!r.ok) { say("Capture failed: " + (resp.message || resp.error || r.status)); return; }
-  } catch (e) { say("Capture failed: " + e); return; }
+    if (!r.ok) { say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
+  } catch (e) { say("That didn't go through — check your connection.", ""); return; }
 
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch { say("Couldn't read the reply from the model."); return; }
+  catch { say("I couldn't read the reply. Nothing was filed."); return; }
 
   const ops = [];
   for (const a of (agent.actions || [])) {
@@ -555,11 +611,19 @@ async function capture(utterance, audioB64) {
   }
   if (ops.length) {
     const w = await post("records/modify", { zoneID: ZONE, operations: ops });
-    if (w.status !== 200) { say("Saved nothing — " + (w.json.reason || w.status)); return; }
+    if (w.status !== 200) { say("Nothing was saved — " + (w.json.reason || w.status)); return; }
+    // Show the new tasks immediately: CloudKit queries are eventually consistent,
+    // so waiting on a re-query is what made captures look like they vanished.
+    for (const rec of (w.json.records || [])) {
+      if (rec.recordName && !records.some(r => r.recordName === rec.recordName)) records.push(rec);
+      else if (rec.recordName) records = records.map(r => r.recordName === rec.recordName ? rec : r);
+    }
+    render();
   }
-  say(agent.reply || "Done.");
-  refresh();
+  say(agent.reply || "Filed.", "said");
   refreshQuota();
+  // Reconcile with the server once it has caught up.
+  setTimeout(refresh, 2500);
 }
 
 /* ---- microphone: click to talk, click to send ------------------------ */
@@ -573,7 +637,7 @@ async function micToggle() {
     btn.classList.remove("recording"); btn.innerHTML = MIC_ICON;
 
     let total = 0; for (const c of chunks) total += c.length;
-    if (total < 4000) { say("That was too short — click, talk, then click again."); return; }
+    if (total < 4000) { say("That was too short to hear — click the mic, talk, then click stop."); return; }
     const all = new Float32Array(total); let o = 0;
     for (const c of chunks) { all.set(c, o); o += c.length; }
     const ratio = rate / 16000, n = Math.floor(all.length / ratio);
@@ -605,7 +669,8 @@ async function micToggle() {
     const t0 = Date.now();
     const tickText = () => {
       const s = Math.floor((Date.now() - t0) / 1000);
-      say(`Listening — ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")} · click ■ to send`, true);
+      const clock = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+      say(`Listening — ${clock}`, "live", "Say it in any language. Click the stop button when you're done.");
     };
     tickText();
     recTimer = setInterval(tickText, 500);
@@ -662,9 +727,8 @@ document.addEventListener("keydown", e => {
       refreshQuota();
       $("signout").classList.remove("hidden");
       show("list");
-      say("Loading…", true);
-      await refresh();
       say("");
+      await refresh();
       return;
     }
     try { localStorage.removeItem("ckSession"); } catch {}
