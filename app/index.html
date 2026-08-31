@@ -61,6 +61,7 @@
   <div class="word">To - <em>did</em></div>
   <div class="spacer"></div>
   <div id="whoami"></div>
+  <button id="signout" class="hidden" title="Sign out" style="border:none;background:none;color:var(--done);cursor:pointer;font:inherit;font-size:13px;">Sign out</button>
 </header>
 
 <div id="setup" class="gate hidden">
@@ -84,8 +85,9 @@
 
 <form id="add" class="hidden">
   <div class="row">
-    <input id="newTitle" placeholder="Add a task…" autocomplete="off">
-    <input id="newDue" type="datetime-local">
+    <input id="newTitle" placeholder="Say it or type it — any language…" autocomplete="off">
+    <button id="micBtn" type="button" title="Hold a thought — click, talk, click again"
+      style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:20px;cursor:pointer;flex:none;">🎙️</button>
     <button id="addBtn" type="submit">＋</button>
   </div>
 </form>
@@ -190,21 +192,10 @@ async function del(r) {
 }
 document.getElementById("add").addEventListener("submit", async e => {
   e.preventDefault();
-  const title = document.getElementById("newTitle").value.trim();
-  if (!title) return;
-  const dueRaw = document.getElementById("newDue").value;
-  const fields = {
-    CD_title: { value: title },
-    CD_id: { value: crypto.randomUUID().toUpperCase() },
-    CD_entityName: { value: "TodoTask" },
-    CD_createdAt: { value: Date.now() },
-  };
-  if (dueRaw) fields.CD_dueAt = { value: new Date(dueRaw).getTime() };
-  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "create",
-    record: { recordType: "CD_TodoTask", fields } }] });
-  if (resp.status !== 200) { alert(resp.json.reason || resp.status); return; }
-  document.getElementById("newTitle").value = ""; document.getElementById("newDue").value = "";
-  refresh();
+  const text = document.getElementById("newTitle").value.trim();
+  if (!text) return;
+  document.getElementById("newTitle").value = "";
+  capture(text, null);
 });
 
 (async function boot() {
@@ -220,6 +211,7 @@ document.getElementById("add").addEventListener("submit", async e => {
     if (me.status === 200) {
       const id = await me.json();
       document.getElementById("whoami").textContent = (id.nameComponents && id.nameComponents.givenName) || "signed in";
+      document.getElementById("signout").classList.remove("hidden");
       show("list"); refresh(); return;
     }
     try { localStorage.removeItem("ckSession"); } catch {}
@@ -232,6 +224,135 @@ document.getElementById("add").addEventListener("submit", async e => {
     else document.getElementById("signinErr").textContent = "No sign-in URL (" + r.status + ")";
   };
 })();
+
+// ---- capture through the model (same proxy the apps use) ----
+const PROXY = "https://todone-capture-owi5vfwija-uc.a.run.app/v1/capture";
+function deviceID() {
+  try {
+    let d = localStorage.getItem("todidWebDevice");
+    if (!d) { d = "web-" + crypto.randomUUID(); localStorage.setItem("todidWebDevice", d); }
+    return d;
+  } catch { return "web-anon"; }
+}
+function isoNow() {
+  const d = new Date(), off = -d.getTimezoneOffset();
+  const p = n => String(Math.abs(n)).padStart(2, "0");
+  const weekday = d.toLocaleDateString("en-US", {weekday: "long"});
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
+         `${off>=0?"+":"-"}${p(Math.floor(Math.abs(off)/60))}:${p(Math.abs(off)%60)} (${weekday})`;
+}
+let idMap = {};
+function contextBlock(utterance) {
+  const open = records.filter(r => !(r.fields.CD_completedAt && r.fields.CD_completedAt.value));
+  idMap = {};
+  const lines = [`CURRENT_TIME: ${isoNow()}`, `TIMEZONE: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`, "OPEN_TASKS:"];
+  if (!open.length) lines.push("(none)");
+  open.forEach((r, i) => {
+    const sid = "T" + (i+1); idMap[sid] = r;
+    const due = r.fields.CD_dueAt?.value ? new Date(r.fields.CD_dueAt.value).toISOString() : "none";
+    lines.push(`${sid} | ${r.fields.CD_title?.value ?? ""} | due: ${due}`);
+  });
+  lines.push("UTTERANCE:", utterance);
+  return lines.join("\n");
+}
+async function capture(utterance, audioB64) {
+  document.getElementById("status").textContent = "Thinking…";
+  const parts = [];
+  if (audioB64) parts.push({ inline_data: { mime_type: "audio/wav", data: audioB64 } });
+  parts.push({ text: contextBlock(utterance || "") });
+  let resp;
+  try {
+    const r = await fetch(PROXY, { method: "POST",
+      headers: { "Content-Type": "application/json", "X-Todid-Device": deviceID() },
+      body: JSON.stringify({ contents: [{ role: "user", parts }] }) });
+    resp = await r.json();
+    if (!r.ok) { document.getElementById("status").textContent = "Capture failed: " + (resp.message || resp.error || r.status); return; }
+  } catch (e) { document.getElementById("status").textContent = "Capture failed: " + e; return; }
+  let agent;
+  try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
+  catch { document.getElementById("status").textContent = "Couldn't read the model's reply"; return; }
+  const ops = [];
+  for (const a of (agent.actions || [])) {
+    if (a.type === "add_task" && a.title) {
+      const fields = { CD_title: { value: a.title }, CD_id: { value: crypto.randomUUID().toUpperCase() },
+                       CD_entityName: { value: "TodoTask" }, CD_createdAt: { value: Date.now() } };
+      const t = a.due_at ? Date.parse(a.due_at) : NaN;
+      if (!isNaN(t)) fields.CD_dueAt = { value: t };
+      ops.push({ operationType: "create", record: { recordType: "CD_TodoTask", fields } });
+    } else if (a.type === "complete_task") {
+      for (const sid of (a.target_task_ids || [])) {
+        const r = idMap[sid]; if (!r) continue;
+        ops.push({ operationType: "update", record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag,
+          recordType: "CD_TodoTask", fields: { CD_completedAt: { value: Date.now() } } } });
+      }
+    } else if (a.type === "reschedule_task") {
+      const t = a.due_at ? Date.parse(a.due_at) : NaN;
+      for (const sid of (a.target_task_ids || [])) {
+        const r = idMap[sid]; if (!r) continue;
+        ops.push({ operationType: "update", record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag,
+          recordType: "CD_TodoTask", fields: { CD_dueAt: isNaN(t) ? { value: null } : { value: t } } } });
+      }
+    }
+  }
+  if (ops.length) {
+    const w = await post("records/modify", { zoneID: ZONE, operations: ops });
+    if (w.status !== 200) { document.getElementById("status").textContent = "Save failed: " + (w.json.reason || w.status); return; }
+  }
+  document.getElementById("status").textContent = agent.reply || "Done";
+  refresh();
+}
+
+// ---- microphone: click to talk, click to send (16 kHz mono WAV, like the apps) ----
+let rec = null;
+async function micToggle() {
+  const btn = document.getElementById("micBtn");
+  if (rec) { // stop & send
+    const { ctx, node, stream, chunks, rate } = rec; rec = null;
+    node.disconnect(); stream.getTracks().forEach(t => t.stop()); ctx.close();
+    btn.style.background = "var(--accent)"; btn.textContent = "🎙️";
+    let total = 0; for (const c of chunks) total += c.length;
+    if (total < 4000) { document.getElementById("status").textContent = "Too short — click, talk, click again"; return; }
+    const all = new Float32Array(total); let o = 0;
+    for (const c of chunks) { all.set(c, o); o += c.length; }
+    const ratio = rate / 16000, n = Math.floor(all.length / ratio);
+    const pcm = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = all[Math.floor(i * ratio)];
+      pcm[i] = Math.max(-32768, Math.min(32767, v * 32767));
+    }
+    const wav = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(wav);
+    const ws = (off, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)); };
+    ws(0, "RIFF"); dv.setUint32(4, 36 + pcm.length * 2, true); ws(8, "WAVEfmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true);
+    dv.setUint16(34, 16, true); ws(36, "data"); dv.setUint32(40, pcm.length * 2, true);
+    new Int16Array(wav, 44).set(pcm);
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(wav).subarray(0, 0))) || "";
+    // chunked base64 (large arrays overflow the argument list)
+    const bytes = new Uint8Array(wav); let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    capture("", btoa(bin));
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const node = ctx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    node.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(node); node.connect(ctx.destination);
+    rec = { ctx, node, stream, chunks, rate: ctx.sampleRate };
+    btn.style.background = "#D91E63"; btn.textContent = "⏹";
+    document.getElementById("status").textContent = "Listening… click ⏹ to send";
+  } catch (e) { document.getElementById("status").textContent = "Microphone blocked: " + e.name; }
+}
+document.getElementById("micBtn").onclick = micToggle;
+document.getElementById("signout").onclick = () => {
+  try { localStorage.removeItem("ckSession"); } catch {}
+  location.reload();
+};
+
 </script>
 </body>
 </html>
