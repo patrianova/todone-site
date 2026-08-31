@@ -71,7 +71,10 @@
 
 <div id="signin" class="gate hidden">
   <p>Your list lives in your iCloud.<br>Sign in with your Apple ID to see it.</p>
-  <div id="apple-sign-in-button"></div>
+  <button id="signinBtn" style="background:var(--accent);color:#fff;border:none;border-radius:100px;
+    padding:15px 34px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;">
+    Sign in with Apple&nbsp;ID</button>
+  <p id="signinErr" style="color:var(--accent);font-size:13px;"></p>
 </div>
 
 <div id="list" class="hidden">
@@ -209,9 +212,20 @@ document.getElementById("add").addEventListener("submit", async e => {
   }]});
   const container = CloudKit.getDefaultContainer();
   db = container.privateCloudDatabase;
+  // Full-page redirect flow: CloudKit JS consumes the ckSession URL param on return.
   container.setUpAuth().then(identity => {
-    if (identity) { onSignedIn(container, identity); } else { show("signin"); container.whenUserSignsIn().then(id => onSignedIn(container, id)); }
-  });
+    if (identity) { onSignedIn(container, identity); return; }
+    show("signin");
+    document.getElementById("signinBtn").onclick = async () => {
+      try {
+        const r = await fetch("https://api.apple-cloudkit.com/database/1/iCloud.app.todid/production/private/users/current?ckAPIToken=" + window.TODID_CK_TOKEN);
+        const j = await r.json();
+        if (j.redirectURL) { location.href = j.redirectURL; }
+        else { document.getElementById("signinErr").textContent = "No sign-in URL: " + (j.reason || r.status); }
+      } catch (e) { document.getElementById("signinErr").textContent = String(e); }
+    };
+    container.whenUserSignsIn().then(id => onSignedIn(container, id));
+  }).catch(e => { show("signin"); document.getElementById("signinErr").textContent = String(e); });
 })();
 
 function onSignedIn(container, identity) {
