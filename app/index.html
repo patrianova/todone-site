@@ -65,7 +65,7 @@
 
 <div id="setup" class="gate hidden">
   <p>This page needs its CloudKit token.<br>
-  CloudKit Console → <b>iCloud.com.rodrigo.todone</b> → Settings → <b>Tokens &amp; Keys</b> →
+  CloudKit Console → <b>iCloud.app.todid</b> → Settings → <b>Tokens &amp; Keys</b> →
   API Tokens → create <code>todone-web</code>, paste it into <code>app/config.js</code>.</p>
 </div>
 
@@ -201,10 +201,10 @@ document.getElementById("add").addEventListener("submit", async e => {
 });
 
 (function boot() {
-  if (!window.TODONE_CK_TOKEN) { show("setup"); return; }
+  if (!window.TODID_CK_TOKEN) { show("setup"); return; }
   CloudKit.configure({ containers: [{
-    containerIdentifier: "iCloud.com.rodrigo.todone",
-    apiTokenAuth: { apiToken: window.TODONE_CK_TOKEN, persist: true },
+    containerIdentifier: "iCloud.app.todid",
+    apiTokenAuth: { apiToken: window.TODID_CK_TOKEN, persist: true },
     environment: "production",
   }]});
   const container = CloudKit.getDefaultContainer();

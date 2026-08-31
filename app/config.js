@@ -1,4 +1,4 @@
-// CloudKit JS API token for the To-done web app.
-// Create one in CloudKit Console → iCloud.com.rodrigo.todone → Settings →
-// Tokens & Keys → API Tokens → "+" (name it todone-web), then paste it here.
-window.TODONE_CK_TOKEN = "";
+// CloudKit JS API token for the To-did web app.
+// CloudKit Console → iCloud.app.todid → Settings → Tokens & Keys → API Tokens
+// → create "todid-web", paste it here.
+window.TODID_CK_TOKEN = "";
