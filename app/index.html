@@ -309,6 +309,7 @@ const MIC_STOP_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="cur
 const MIC_ICON = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>';
 
 let records = [];
+let busy = false;
 let view = "open";
 let query = "";
 
@@ -566,6 +567,7 @@ function contextBlock(utterance) {
   return lines.join("\n");
 }
 async function capture(utterance, audioB64) {
+  busy = true;
   say(audioB64 ? "Working out what you said…" : "Working out what you meant…", "busy",
       "Reading the dates and filing it.");
   const parts = [];
@@ -579,17 +581,18 @@ async function capture(utterance, audioB64) {
       body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
     if (r.status === 429) {
+      busy = false;
       say(resp.message || "That's this month's free captures.", "",
           "To-did Pro is unlimited — see the plans.");
       showUpgrade();
       return;
     }
-    if (!r.ok) { say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
-  } catch (e) { say("That didn't go through — check your connection.", ""); return; }
+    if (!r.ok) { busy = false; say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
+  } catch (e) { busy = false; say("That didn't go through — check your connection.", ""); return; }
 
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch { say("I couldn't read the reply. Nothing was filed."); return; }
+  catch { busy = false; say("I couldn't read the reply. Nothing was filed."); return; }
 
   const ops = [];
   for (const a of (agent.actions || [])) {
@@ -616,7 +619,7 @@ async function capture(utterance, audioB64) {
   }
   if (ops.length) {
     const w = await post("records/modify", { zoneID: ZONE, operations: ops });
-    if (w.status !== 200) { say("Nothing was saved — " + (w.json.reason || w.status)); return; }
+    if (w.status !== 200) { busy = false; say("Nothing was saved — " + (w.json.reason || w.status)); return; }
     // Show the new tasks immediately: CloudKit queries are eventually consistent,
     // so waiting on a re-query is what made captures look like they vanished.
     for (const rec of (w.json.records || [])) {
@@ -625,6 +628,7 @@ async function capture(utterance, audioB64) {
     }
     render();
   }
+  busy = false;
   say(agent.reply || "Filed.", "said");
   refreshQuota();
   // Reconcile with the server once it has caught up.
@@ -707,6 +711,16 @@ $("signout").onclick = () => {
   try { localStorage.removeItem("ckSession"); } catch {}
   location.reload();
 };
+/* A task completed on the phone or the Mac has to show up here without a reload,
+   so re-query when the tab regains attention and on a slow heartbeat while visible.
+   Never while a capture is in flight or the mic is open. */
+function canAutoRefresh() {
+  return document.visibilityState === "visible" && !busy && !rec && !!session();
+}
+document.addEventListener("visibilitychange", () => { if (canAutoRefresh()) refresh(); });
+window.addEventListener("focus", () => { if (canAutoRefresh()) refresh(); });
+setInterval(() => { if (canAutoRefresh()) refresh(); }, 20000);
+
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("newTitle").focus(); }
   if (e.key === "Escape" && document.activeElement === $("search")) {
