@@ -1,26 +1,85 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="/todone-site/style.css"><title>Privacy — To-did</title></head><body><div class="wrap">
-<header class="site"><div class="mark"><svg viewBox="0 0 64 64" fill="none"><defs><mask id="m"><path d="M11 35 L25 49 L53 15" stroke="#FFF" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m)" fill="#FFF"><rect x="7.2" y="0" width="7.5" height="64"/><rect x="17.3" y="0" width="7.5" height="64"/><rect x="27.4" y="0" width="7.5" height="64"/><rect x="37.5" y="0" width="7.5" height="64"/><rect x="47.6" y="0" width="7.5" height="64"/></g></svg></div><div class="wordmark">To&#8209;<em>did</em></div></header>
-<h1>Privacy Policy</h1>
-<p class="sub">The short version: your voice goes to one AI service to be understood, and everything else stays on your phone.</p>
-<h2>What the app collects</h2>
-<p>Nothing, in the analytics sense. To-did has no accounts, no tracking, no analytics SDKs, and no server of its own.</p>
-<h2>What leaves your device</h2>
-<ul>
-<li><strong>Your capture.</strong> When you record a thought, the audio (or typed text), plus your current open task titles and recent note snippets for context, is sent to Google's Gemini API to be interpreted. Google processes it under the <a href="https://ai.google.dev/gemini-api/terms">Gemini API terms</a>; we do not use it for anything else, and neither the audio nor the reply is stored by us anywhere off your device.</li>
-</ul>
-<h2>What stays on your device</h2>
-<ul>
-<li>Your tasks and notes, in the app's local database.</li>
-<li>If you enable iCloud sync, they are also stored in <strong>your own iCloud account's private database</strong>, which we cannot read.</li>
-<li>Reminders are local notifications scheduled on the phone itself.</li>
-</ul>
-<h2>Microphone</h2>
-<p>The microphone is used only while you are capturing — while the recording indicator is visible — and the recording is deleted from the device after it is processed. Failed captures keep their recording locally until they can be retried, then it is deleted.</p>
-<h2>Deleting your data</h2>
-<p>Settings → "Erase all tasks and notes" removes everything, immediately. Deleting the app does the same for local data.</p>
-<h2>Children</h2>
-<p>To-did is not directed at children under 13.</p>
-<h2>Contact</h2>
-<p><a href="mailto:rpatrianova@gmail.com">rpatrianova@gmail.com</a></p>
-<p class="updated">Last updated: August 30, 2026</p>
-<footer><a href="/todone-site/">Home</a><a href="/todone-site/privacy/">Privacy</a><a href="/todone-site/terms/">Terms</a><a href="/todone-site/support/">Support</a><span>© 2026 Rodrigo Patrianova</span></footer></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — To-did</title>
+<meta name="description" content="How To-did handles your voice, your tasks, and your privacy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/todone-site/style.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav">
+    <a class="brand" href="/todone-site/">
+      <span class="mark"><svg width="20" height="20" viewBox="0 0 64 64" fill="none"><defs><mask id="m1"><path d="M11 35 L25 49 L53 15" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m1)" fill="#fff"><rect x="4" width="5.5" height="64"/><rect x="12" width="5.5" height="64"/><rect x="20" width="5.5" height="64"/><rect x="28" width="5.5" height="64"/><rect x="36" width="5.5" height="64"/><rect x="44" width="5.5" height="64"/><rect x="52" width="5.5" height="64"/></g></svg></span>
+      <span class="wordmark">To-<em>did</em></span>
+    </a>
+    <div class="nav-links">
+      <a class="hide-sm" href="/todone-site/privacy/">Privacy</a>
+      <a class="hide-sm" href="/todone-site/terms/">Terms</a>
+      <a class="hide-sm" href="/todone-site/support/">Support</a>
+      <a class="strong" href="/todone-site/app/">Open the web app</a>
+    </div>
+  </nav>
+  <article class="doc">
+    <div class="kicker">Privacy</div>
+    <h1>Privacy Policy</h1>
+    <p class="standfirst">The short version: what you say goes to one AI service to be understood, your list lives in your own iCloud, and there is nothing else — no accounts with us, no analytics, no tracking.</p>
+
+    <section>
+      <h2>What we collect</h2>
+      <p>Nothing that identifies you. To-did has no user accounts, no analytics SDKs, no advertising identifiers, and no profile of you anywhere. We never see your name or email unless you write to us.</p>
+    </section>
+
+    <section>
+      <h2>What leaves your device</h2>
+      <p>When you capture a thought, the recording (or the text you typed), together with the titles and dates of your currently open tasks for context, is sent to our capture service and forwarded to Google's Gemini API to be interpreted. Google processes it under the <a href="https://ai.google.dev/gemini-api/terms">Gemini API terms</a>.</p>
+      <p>The audio is not stored — not by us, not after the reply comes back. Our service keeps only anonymous counters (how many captures a device made this month, how long they took) so we can meter free usage and keep the service running.</p>
+    </section>
+
+    <section>
+      <h2>Where your list lives</h2>
+      <p>Your tasks are stored in the app's local database on each device, and — when iCloud sync is on — in <strong>your own iCloud account's private database</strong>, which Apple encrypts and we cannot read. We have no copy of your tasks on any server of ours.</p>
+      <p>Reminders are local notifications scheduled by your own device.</p>
+    </section>
+
+    <section>
+      <h2>The microphone</h2>
+      <p>The microphone is active only while you are capturing — while the recording indicator is showing — and the recording file is deleted from the device once it has been processed. A capture that fails keeps its recording locally until it can be retried, then that copy is deleted too.</p>
+    </section>
+
+    <section>
+      <h2>Deleting your data</h2>
+      <p>Swipe or click any task to delete it. Deleting the app removes its local database; turning off iCloud sync for To-did in your iCloud settings removes the synced copy. Write to us and we will delete the anonymous usage counters tied to your device identifier.</p>
+    </section>
+
+    <section>
+      <h2>Children</h2>
+      <p>To-did is not directed at children under 13 and we do not knowingly collect information from them.</p>
+    </section>
+
+    <section>
+      <h2>Changes and contact</h2>
+      <p>If this policy changes in a way that affects what leaves your device, the app will say so before the change takes effect. Questions: <a href="mailto:rpatrianova@gmail.com">rpatrianova@gmail.com</a>.</p>
+      <p class="updated">Last updated: August 31, 2026</p>
+    </section>
+  </article>
+  <footer class="foot">
+    <div class="foot-brand">
+      <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><defs><mask id="m2"><path d="M11 35 L25 49 L53 15" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m2)" fill="#1A1A19"><rect x="4" width="5.5" height="64"/><rect x="12" width="5.5" height="64"/><rect x="20" width="5.5" height="64"/><rect x="28" width="5.5" height="64"/><rect x="36" width="5.5" height="64"/><rect x="44" width="5.5" height="64"/><rect x="52" width="5.5" height="64"/></g></svg>
+      <span>To-did</span>
+    </div>
+    <div class="foot-links">
+      <a href="/todone-site/">Home</a>
+      <a href="/todone-site/privacy/">Privacy</a>
+      <a href="/todone-site/terms/">Terms</a>
+      <a href="/todone-site/support/">Support</a>
+      <a href="mailto:rpatrianova@gmail.com">rpatrianova@gmail.com</a>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

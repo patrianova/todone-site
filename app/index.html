@@ -4,104 +4,289 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>To-did</title>
+<meta name="description" content="Your To-did list in the browser — say it or type it, in any language.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#1A1A19; --accent:#FF2E77; --muted:#9A9A94; --done:#C4C4BF;
-          --divider:#E3E3DF; --hairline:#F4F4F2; --canvas:#FFFFFF; }
+  :root {
+    --ink:#1A1A19; --body:#6F6F69; --muted:#9A9A94; --faint:#B4B4AE; --done:#C4C4BF;
+    --stroke:#DCDCD8; --rule:#E3E3DF; --hair:#F4F4F2; --canvas:#F2F1EF; --card:#FFFFFF;
+    --accent:#FF2E77;
+  }
   * { margin:0; box-sizing:border-box; }
-  body { font-family:Manrope,system-ui,sans-serif; background:var(--canvas); color:var(--ink);
-         max-width:560px; margin:0 auto; padding:18px 24px 90px; }
-  header { display:flex; align-items:center; gap:10px; padding:6px 0 14px; }
-  .mark { width:28px; height:28px; border-radius:8px; background:var(--accent);
-          display:flex; align-items:center; justify-content:center; }
-  .word { font-size:22px; font-weight:600; letter-spacing:-.03em; }
-  .word em { color:var(--accent); font-style:italic; font-weight:600; }
-  header .spacer { flex:1; }
-  #whoami { font-size:12px; color:var(--muted); }
-  h2.bucket { font-size:11px; font-weight:600; letter-spacing:.11em; text-transform:uppercase;
-              color:var(--muted); margin:22px 0 4px; display:flex; gap:7px; }
-  h2.bucket span { color:var(--done); }
-  .task { display:flex; gap:14px; align-items:flex-start; padding:13px 0;
-          border-bottom:1px solid var(--divider); }
-  .task:last-child { border-bottom:none; }
-  .check { width:22px; height:22px; border-radius:50%; border:1.5px solid #DCDCD8; flex:none;
-           margin-top:1px; cursor:pointer; background:none; position:relative; }
-  .task.done .check { background:var(--accent); border-color:var(--accent); }
-  .task.done .check::after { content:"✓"; color:#fff; font-size:12px; font-weight:800;
-           position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
-  .body { flex:1; }
-  .title { font-size:16px; line-height:1.4; }
-  .task.done .title { color:var(--done); text-decoration:line-through; }
-  .due { font-size:13px; color:var(--muted); margin-top:3px; }
-  .due.overdue { color:var(--accent); }
-  .del { border:none; background:none; color:var(--done); cursor:pointer; font-size:15px;
-         padding:2px 4px; visibility:hidden; }
-  .task:hover .del { visibility:visible; }
-  form#add { position:fixed; bottom:0; left:0; right:0; background:var(--canvas);
-             border-top:1px solid var(--hairline); padding:12px 24px 20px; }
-  form#add .row { max-width:512px; margin:0 auto; display:flex; gap:10px; }
-  #newTitle { flex:1; border:none; background:var(--hairline); border-radius:100px;
-              padding:14px 20px; font:inherit; font-size:15px; outline:none; }
-  #newDue { border:none; background:var(--hairline); border-radius:14px; padding:8px 10px;
-            font:inherit; font-size:13px; color:var(--muted); width:150px; }
-  #addBtn { width:48px; height:48px; border-radius:50%; background:var(--accent); color:#fff;
-            border:none; font-size:22px; cursor:pointer; flex:none; }
-  .gate { text-align:center; padding:70px 20px; }
-  .gate p { color:var(--muted); font-size:15px; line-height:1.6; margin:14px 0 22px; }
+  html, body { height:100%; }
+  body {
+    font-family:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:var(--canvas); color:var(--ink); -webkit-font-smoothing:antialiased;
+  }
+  a { color:inherit; text-decoration:none; }
   .hidden { display:none !important; }
-  #status { font-size:13px; color:var(--muted); padding:8px 0; }
-  code { background:var(--hairline); padding:2px 6px; border-radius:6px; font-size:13px; }
+
+  /* shell ------------------------------------------------------------ */
+  .app {
+    max-width:1440px; height:100%; margin:0 auto; background:var(--card);
+    display:flex; overflow:hidden;
+  }
+  @media (min-width:1080px) {
+    body { padding:24px; }
+    .app { height:calc(100vh - 48px); border-radius:28px; }
+  }
+
+  /* sidebar ---------------------------------------------------------- */
+  .side {
+    width:260px; flex:none; border-right:1px solid var(--rule);
+    display:flex; flex-direction:column;
+  }
+  .side .brand { height:72px; padding:0 24px; display:flex; align-items:center; gap:11px; }
+  .mark {
+    width:30px; height:30px; border-radius:9px; background:var(--accent); flex:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wordmark { font-size:20px; font-weight:600; letter-spacing:-.02em; }
+  .wordmark em { color:var(--accent); font-style:italic; }
+
+  .side nav { padding:12px 12px 0; display:flex; flex-direction:column; gap:2px; }
+  .navitem {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; border-radius:10px; cursor:pointer; border:none;
+    background:none; font:inherit; width:100%; text-align:left; color:var(--body);
+  }
+  .navitem span.label { font-size:15px; }
+  .navitem span.count { font-size:13px; color:var(--faint); }
+  .navitem:hover { background:var(--hair); }
+  .navitem.on { background:var(--hair); }
+  .navitem.on span.label { font-weight:600; color:var(--ink); }
+  .navitem.on span.count { font-weight:600; color:var(--muted); }
+
+  .side .foot {
+    margin-top:auto; padding:20px 24px; border-top:1px solid var(--rule);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .side .who { font-size:14px; color:var(--muted); }
+  .side .foot a, .side .foot button {
+    font-size:13px; color:var(--faint); background:none; border:none; padding:0;
+    font:inherit; font-size:13px; cursor:pointer; text-align:left;
+  }
+  .side .foot a:hover, .side .foot button:hover { color:var(--ink); }
+
+  /* main ------------------------------------------------------------- */
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  .topbar {
+    height:72px; padding:0 40px; flex:none;
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    border-bottom:1px solid var(--rule);
+  }
+  .topbar h1 { font-size:22px; font-weight:600; letter-spacing:-.02em; }
+  .topbar .titlewrap { display:flex; align-items:baseline; gap:12px; min-width:0; }
+  .topbar .summary { font-size:14px; color:var(--faint); white-space:nowrap; }
+
+  .search {
+    background:var(--hair); border-radius:100px; padding:9px 16px;
+    display:flex; align-items:center; gap:8px; color:var(--faint);
+  }
+  .search input {
+    border:none; background:none; outline:none; font:inherit; font-size:14px;
+    color:var(--ink); width:170px;
+  }
+  .search input::placeholder { color:var(--faint); }
+
+  /* list ------------------------------------------------------------- */
+  .scroll { flex:1; overflow-y:auto; padding:26px 40px 8px; }
+  .bucket { display:flex; align-items:center; gap:10px; padding:22px 0 4px; }
+  .bucket:first-child { padding-top:0; }
+  .bucket .name {
+    font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted);
+  }
+  .bucket .n { font-size:12px; font-weight:600; color:var(--done); }
+  .bucket.urgent .name, .bucket.urgent .n { color:var(--accent); }
+
+  .task {
+    display:flex; align-items:flex-start; gap:16px; padding:14px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .task:hover { background:#FAFAF9; margin:0 -16px; padding-left:16px; padding-right:16px; border-radius:8px; }
+  .check {
+    width:22px; height:22px; border-radius:50%; border:1.5px solid var(--stroke);
+    flex:none; margin-top:1px; cursor:pointer; background:none; position:relative; padding:0;
+  }
+  .check:hover { border-color: var(--accent); }
+  .task.overdue .check { border-color:var(--accent); }
+  .task.is-done .check { background:var(--accent); border-color:var(--accent); }
+  .task.is-done .check::after {
+    content:"✓"; color:#fff; font-size:12px; font-weight:800;
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  }
+  .task .body { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .task .title { font-size:16px; line-height:1.4; word-break:break-word; }
+  .task.is-done .title { color:var(--done); text-decoration:line-through; }
+  .task .meta { font-size:13px; color:var(--faint); }
+  .task.overdue .meta { color:var(--accent); font-weight:500; }
+  .actions { display:flex; align-items:center; gap:12px; color:var(--done); opacity:0; }
+  .task:hover .actions, .task:focus-within .actions { opacity:1; }
+  .actions button { background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0; }
+  .actions button:hover { color:var(--ink); }
+
+  .empty { padding:80px 0; text-align:center; color:var(--faint); font-size:15px; }
+  .empty strong { display:block; color:var(--ink); font-size:19px; font-weight:600; margin-bottom:6px; }
+
+  /* capture bar ------------------------------------------------------ */
+  .composer {
+    flex:none; border-top:1px solid var(--rule); padding:20px 40px 26px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .composer input {
+    flex:1; min-width:0; background:var(--hair); border:none; border-radius:100px;
+    padding:16px 22px; font:inherit; font-size:15px; outline:none; color:var(--ink);
+  }
+  .composer input::placeholder { color:var(--faint); }
+  .circlebtn {
+    width:52px; height:52px; border-radius:50%; border:none; flex:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; color:#fff;
+    transition:transform .12s ease;
+  }
+  .circlebtn:active { transform:scale(.95); }
+  #micBtn { background:var(--accent); }
+  #micBtn.recording { background:var(--ink); }
+  #addBtn { background:var(--ink); }
+
+  .reply {
+    padding:0 40px 12px; font-size:14px; color:var(--body); min-height:20px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .reply .dot {
+    width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  @media (prefers-reduced-motion: reduce) { .reply .dot { animation:none; } }
+
+  /* gates ------------------------------------------------------------ */
+  .gate {
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:60px 32px; gap:8px;
+  }
+  .gate .glogo { margin-bottom:10px; }
+  .gate h2 { font-size:28px; font-weight:600; letter-spacing:-.03em; }
+  .gate p { font-size:16px; color:var(--body); max-width:380px; line-height:1.6; margin-bottom:14px; }
+  .gate .btn {
+    background:var(--accent); color:#fff; border:none; border-radius:100px;
+    padding:16px 30px; font:inherit; font-size:16px; font-weight:600; cursor:pointer;
+  }
+  .gate .err { color:var(--accent); font-size:13px; min-height:18px; }
+  .gate code { background:var(--hair); padding:2px 6px; border-radius:6px; font-size:13px; }
+
+  /* mobile ----------------------------------------------------------- */
+  @media (max-width:860px) {
+    body { padding:0; }
+    .app { height:100vh; border-radius:0; }
+    .side { display:none; }
+    .side.mobile-visible { display:flex; position:absolute; inset:0; z-index:30; background:var(--card); width:100%; }
+    .topbar { padding:0 20px; gap:10px; }
+    .topbar .summary { display:none; }
+    .search input { width:110px; }
+    .scroll { padding:20px 20px 4px; }
+    .composer { padding:14px 20px 20px; gap:10px; }
+    .circlebtn { width:48px; height:48px; }
+    .reply { padding:0 20px 10px; }
+    #menuBtn { display:flex !important; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64" fill="none"><defs><mask id="m"><path d="M11 35 L25 49 L53 15" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m)" fill="#fff"><rect x="4" width="5.5" height="64"/><rect x="12" width="5.5" height="64"/><rect x="20" width="5.5" height="64"/><rect x="28" width="5.5" height="64"/><rect x="36" width="5.5" height="64"/><rect x="44" width="5.5" height="64"/><rect x="52" width="5.5" height="64"/></g></svg></div>
-  <div class="word">To - <em>did</em></div>
-  <div class="spacer"></div>
-  <div id="whoami"></div>
-  <button id="signout" class="hidden" title="Sign out" style="border:none;background:none;color:var(--done);cursor:pointer;font:inherit;font-size:13px;">Sign out</button>
-</header>
+<div class="app">
 
-<div id="setup" class="gate hidden">
-  <p>This page needs its CloudKit token.<br>
-  CloudKit Console → <b>iCloud.app.todid</b> → Settings → <b>Tokens &amp; Keys</b> →
-  API Tokens → create <code>todone-web</code>, paste it into <code>app/config.js</code>.</p>
+  <aside class="side" id="side">
+    <a class="brand" href="/todone-site/">
+      <span class="mark"><svg width="20" height="20" viewBox="0 0 64 64" fill="none"><defs><mask id="m1"><path d="M11 35 L25 49 L53 15" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m1)" fill="#fff"><rect x="4" width="5.5" height="64"/><rect x="12" width="5.5" height="64"/><rect x="20" width="5.5" height="64"/><rect x="28" width="5.5" height="64"/><rect x="36" width="5.5" height="64"/><rect x="44" width="5.5" height="64"/><rect x="52" width="5.5" height="64"/></g></svg></span>
+      <span class="wordmark">To-<em>did</em></span>
+    </a>
+    <nav>
+      <button class="navitem on" data-view="open"><span class="label">Tasks</span><span class="count" id="countOpen">—</span></button>
+      <button class="navitem" data-view="done"><span class="label">Done</span><span class="count" id="countDone">—</span></button>
+    </nav>
+    <div class="foot">
+      <div class="who" id="whoami"></div>
+      <a href="/todone-site/">About To-did</a>
+      <a href="/todone-site/privacy/">Privacy</a>
+      <button id="signout" class="hidden">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <div id="setup" class="gate hidden">
+      <h2>Almost there</h2>
+      <p>This page needs its CloudKit token. CloudKit Console → <b>iCloud.app.todid</b> → Tokens &amp; Keys → create <code>todid-web</code>, then paste it into <code>app/config.js</code>.</p>
+    </div>
+
+    <div id="signin" class="gate hidden">
+      <span class="mark glogo" style="width:44px;height:44px;border-radius:13px;"><svg width="28" height="28" viewBox="0 0 64 64" fill="none"><defs><mask id="m2"><path d="M11 35 L25 49 L53 15" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#m2)" fill="#fff"><rect x="4" width="5.5" height="64"/><rect x="12" width="5.5" height="64"/><rect x="20" width="5.5" height="64"/><rect x="28" width="5.5" height="64"/><rect x="36" width="5.5" height="64"/><rect x="44" width="5.5" height="64"/><rect x="52" width="5.5" height="64"/></g></svg></span>
+      <h2>Your list, your iCloud</h2>
+      <p>To-did keeps everything in your own private iCloud database. Sign in with your Apple&nbsp;ID to see it here.</p>
+      <button id="signinBtn" class="btn">Sign in with Apple ID</button>
+      <p class="err" id="signinErr"></p>
+    </div>
+
+    <div id="list" class="hidden" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="topbar">
+        <div class="titlewrap">
+          <button id="menuBtn" class="circlebtn" style="display:none;width:36px;height:36px;background:var(--hair);color:var(--ink);" title="Menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+          </button>
+          <h1 id="viewTitle">Tasks</h1>
+          <span class="summary" id="summary"></span>
+        </div>
+        <div class="search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+          <input id="search" type="search" placeholder="Search" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="scroll"><div id="buckets"></div></div>
+
+      <div class="reply" id="status"></div>
+
+      <form class="composer" id="add">
+        <input id="newTitle" placeholder="Say it or type it — any language…" autocomplete="off">
+        <button id="micBtn" class="circlebtn" type="button" title="Click, talk, click again">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        </button>
+        <button id="addBtn" class="circlebtn" type="submit" title="Send">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </form>
+    </div>
+
+  </main>
 </div>
-
-<div id="signin" class="gate hidden">
-  <p>Your list lives in your iCloud.<br>Sign in with your Apple ID to see it.</p>
-  <button id="signinBtn" style="background:var(--accent);color:#fff;border:none;border-radius:100px;
-    padding:15px 34px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;">
-    Sign in with Apple&nbsp;ID</button>
-  <p id="signinErr" style="color:var(--accent);font-size:13px;"></p>
-</div>
-
-<div id="list" class="hidden">
-  <div id="status"></div>
-  <div id="buckets"></div>
-</div>
-
-<form id="add" class="hidden">
-  <div class="row">
-    <input id="newTitle" placeholder="Say it or type it — any language…" autocomplete="off">
-    <button id="micBtn" type="button" title="Hold a thought — click, talk, click again"
-      style="width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:20px;cursor:pointer;flex:none;">🎙️</button>
-    <button id="addBtn" type="submit">＋</button>
-  </div>
-</form>
 
 <script src="./config.js"></script>
 <script>
 const ZONE = { zoneName: "com.apple.coredata.cloudkit.zone" };
 const BASE = "https://api.apple-cloudkit.com/database/1/iCloud.app.todid/production/private";
+const MIC_STOP_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+const MIC_ICON = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>';
+
 let records = [];
+let view = "open";
+let query = "";
+
+const $ = id => document.getElementById(id);
 
 function show(id) {
-  for (const s of ["setup","signin","list"]) document.getElementById(s).classList.toggle("hidden", s!==id);
-  document.getElementById("add").classList.toggle("hidden", id!=="list");
+  for (const s of ["setup","signin","list"]) $(s).classList.toggle("hidden", s !== id);
 }
+function say(text, busy) {
+  $("status").innerHTML = "";
+  if (!text) return;
+  if (busy) { const d = document.createElement("span"); d.className = "dot"; $("status").appendChild(d); }
+  $("status").appendChild(document.createTextNode(text));
+}
+
+/* ---- CloudKit REST ------------------------------------------------- */
 function session() { try { return localStorage.getItem("ckSession") || ""; } catch { return ""; } }
 function api(path) {
   let u = `${BASE}/${path}?ckAPIToken=${window.TODID_CK_TOKEN}`;
@@ -110,68 +295,126 @@ function api(path) {
   return u;
 }
 async function post(path, body) {
-  const r = await fetch(api(path), {method:"POST", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(body)});
+  const r = await fetch(api(path), { method:"POST", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(body) });
   return { status: r.status, json: await r.json().catch(() => ({})) };
 }
 
+/* ---- rendering ----------------------------------------------------- */
+function isDone(r) { return !!(r.fields.CD_completedAt && r.fields.CD_completedAt.value); }
+function dueOf(r) { return r.fields.CD_dueAt && r.fields.CD_dueAt.value; }
+function titleOf(r) { return (r.fields.CD_title && r.fields.CD_title.value) || "(untitled)"; }
+
 function bucketOf(r) {
-  const due = r.fields.CD_dueAt && r.fields.CD_dueAt.value;
+  const due = dueOf(r);
   if (!due) return "No date";
   const d = new Date(due), now = new Date();
   if (d < now) return "Overdue";
   const today = new Date(now); today.setHours(0,0,0,0);
-  const days = Math.floor((new Date(d.getFullYear(),d.getMonth(),d.getDate()) - today)/86400000);
+  const days = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   if (days <= 7) return "This week";
   return "Later";
 }
 function dueLabel(r) {
-  const due = r.fields.CD_dueAt && r.fields.CD_dueAt.value;
+  const due = dueOf(r);
   if (!due) return "";
-  return new Date(due).toLocaleString(undefined, {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
+  return new Date(due).toLocaleString(undefined,
+    { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 }
+
 function render() {
-  const open = records.filter(r => !(r.fields.CD_completedAt && r.fields.CD_completedAt.value));
-  const done = records.filter(r =>  (r.fields.CD_completedAt && r.fields.CD_completedAt.value));
-  const order = ["Overdue","Today","Tomorrow","This week","Later","No date"];
-  const groups = {};
-  for (const r of open) (groups[bucketOf(r)] ??= []).push(r);
-  const host = document.getElementById("buckets"); host.innerHTML = "";
-  const section = (name, items) => {
-    if (!items || !items.length) return;
-    const h = document.createElement("h2"); h.className = "bucket";
-    h.innerHTML = `${name} <span>${items.length}</span>`; host.appendChild(h);
+  const open = records.filter(r => !isDone(r));
+  const done = records.filter(isDone);
+  $("countOpen").textContent = open.length;
+  $("countDone").textContent = done.length;
+
+  const overdue = open.filter(r => dueOf(r) && dueOf(r) < Date.now()).length;
+  $("viewTitle").textContent = view === "open" ? "Tasks" : "Done";
+  $("summary").textContent = view === "open"
+    ? `${open.length} open${overdue ? ` · ${overdue} overdue` : ""}`
+    : `${done.length} completed`;
+
+  const q = query.trim().toLowerCase();
+  const match = r => !q || titleOf(r).toLowerCase().includes(q);
+  const host = $("buckets");
+  host.innerHTML = "";
+
+  if (view === "done") {
+    const items = done.filter(match).sort((a,b) => b.fields.CD_completedAt.value - a.fields.CD_completedAt.value);
+    if (!items.length) return emptyState(q ? "Nothing matches" : "Nothing completed yet",
+                                         q ? "Try another word." : "Finished tasks land here.");
     for (const r of items) host.appendChild(row(r));
-  };
-  for (const b of order) section(b, (groups[b]||[]).sort((a,c)=>(a.fields.CD_dueAt?.value??9e15)-(c.fields.CD_dueAt?.value??9e15)));
-  section("Done", done.sort((a,c)=>(c.fields.CD_completedAt.value)-(a.fields.CD_completedAt.value)));
-  document.getElementById("status").textContent = open.length ? "" : "Nothing to do 🎉";
+    return;
+  }
+
+  const groups = {};
+  for (const r of open.filter(match)) (groups[bucketOf(r)] ??= []).push(r);
+  const order = ["Overdue","Today","Tomorrow","This week","Later","No date"];
+  let any = false;
+  for (const name of order) {
+    const items = (groups[name] || []).sort((a,b) => (dueOf(a) ?? 9e15) - (dueOf(b) ?? 9e15));
+    if (!items.length) continue;
+    any = true;
+    const h = document.createElement("div");
+    h.className = "bucket" + (name === "Overdue" ? " urgent" : "");
+    h.innerHTML = `<span class="name"></span><span class="n">${items.length}</span>`;
+    h.querySelector(".name").textContent = name;
+    host.appendChild(h);
+    for (const r of items) host.appendChild(row(r));
+  }
+  if (!any) emptyState(q ? "Nothing matches" : "Nothing to do",
+                       q ? "Try another word." : "Say something below and it lands here, dated.");
 }
+
+function emptyState(title, sub) {
+  const el = document.createElement("div");
+  el.className = "empty";
+  el.innerHTML = "<strong></strong><span></span>";
+  el.querySelector("strong").textContent = title;
+  el.querySelector("span").textContent = sub;
+  $("buckets").appendChild(el);
+}
+
 function row(r) {
   const el = document.createElement("div");
-  const completed = r.fields.CD_completedAt && r.fields.CD_completedAt.value;
-  el.className = "task" + (completed ? " done" : "");
-  const due = dueLabel(r);
-  const overdue = r.fields.CD_dueAt?.value && r.fields.CD_dueAt.value < Date.now() && !completed;
-  el.innerHTML = `<button class="check" title="${completed?"Reopen":"Complete"}"></button>
-    <div class="body"><div class="title"></div>
-    ${due && !completed ? `<div class="due ${overdue?"overdue":""}">${due}</div>` : ""}</div>
-    <button class="del" title="Delete">🗑</button>`;
-  el.querySelector(".title").textContent = r.fields.CD_title?.value ?? "(untitled)";
-  el.querySelector(".check").onclick = () => toggle(r, !completed);
+  const done = isDone(r);
+  const overdue = !done && dueOf(r) && dueOf(r) < Date.now();
+  el.className = "task" + (done ? " is-done" : "") + (overdue ? " overdue" : "");
+  el.innerHTML = `
+    <button class="check" title="${done ? "Reopen" : "Complete"}"></button>
+    <div class="body"><div class="title"></div></div>
+    <div class="actions">
+      <button class="edit" title="Rename">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-4l12-12 4 4L7 21z"/></svg>
+      </button>
+      <button class="del" title="Delete">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+      </button>
+    </div>`;
+  el.querySelector(".title").textContent = titleOf(r);
+  const label = dueLabel(r);
+  if (label && !done) {
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = label;
+    el.querySelector(".body").appendChild(meta);
+  }
+  el.querySelector(".check").onclick = () => toggle(r, !done);
   el.querySelector(".del").onclick = () => del(r);
+  el.querySelector(".edit").onclick = () => rename(r);
   return el;
 }
 
+/* ---- data actions --------------------------------------------------- */
 async function refresh() {
-  document.getElementById("status").textContent = "Loading…";
-  const q = await post("records/query", { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
+  const q = await post("records/query",
+    { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
   if (q.status !== 200) {
-    document.getElementById("status").textContent =
-      "Load failed: " + (q.json.reason || q.json.serverErrorCode || q.status);
+    say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
     if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
       try { localStorage.removeItem("ckSession"); } catch {}
+      show("signin");
     }
     return;
   }
@@ -179,53 +422,30 @@ async function refresh() {
   render();
 }
 async function toggle(r, complete) {
-  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "update",
-    record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag, recordType: "CD_TodoTask",
+  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
+    record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
               fields: { CD_completedAt: complete ? { value: Date.now() } : { value: null } } } }] });
-  if (resp.status === 200) refresh(); else alert(resp.json.reason || resp.status);
+  if (resp.status === 200) refresh(); else say("Couldn't save: " + (resp.json.reason || resp.status));
 }
 async function del(r) {
-  if (!confirm("Delete " + (r.fields.CD_title?.value || "this task") + "?")) return;
-  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType: "forceDelete",
-    record: { recordName: r.recordName } }] });
-  if (resp.status === 200) refresh(); else alert(resp.json.reason || resp.status);
+  if (!confirm("Delete “" + titleOf(r) + "”?")) return;
+  const resp = await post("records/modify", { zoneID: ZONE,
+    operations: [{ operationType:"forceDelete", record: { recordName: r.recordName } }] });
+  if (resp.status === 200) { say("Deleted."); refresh(); }
+  else say("Couldn't delete: " + (resp.json.reason || resp.status));
 }
-document.getElementById("add").addEventListener("submit", async e => {
-  e.preventDefault();
-  const text = document.getElementById("newTitle").value.trim();
-  if (!text) return;
-  document.getElementById("newTitle").value = "";
-  capture(text, null);
-});
+async function rename(r) {
+  const next = prompt("Rename task", titleOf(r));
+  if (next === null) return;
+  const title = next.trim();
+  if (!title || title === titleOf(r)) return;
+  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
+    record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
+              fields: { CD_title: { value: title } } } }] });
+  if (resp.status === 200) refresh(); else say("Couldn't rename: " + (resp.json.reason || resp.status));
+}
 
-(async function boot() {
-  if (!window.TODID_CK_TOKEN) { show("setup"); return; }
-  const params = new URLSearchParams(location.search);
-  const fromURL = params.get("ckSession");
-  if (fromURL) {
-    try { localStorage.setItem("ckSession", fromURL); } catch {}
-    history.replaceState(null, "", location.pathname);
-  }
-  if (session()) {
-    const me = await fetch(api("users/current"));
-    if (me.status === 200) {
-      const id = await me.json();
-      document.getElementById("whoami").textContent = (id.nameComponents && id.nameComponents.givenName) || "signed in";
-      document.getElementById("signout").classList.remove("hidden");
-      show("list"); refresh(); return;
-    }
-    try { localStorage.removeItem("ckSession"); } catch {}
-  }
-  show("signin");
-  document.getElementById("signinBtn").onclick = async () => {
-    const r = await fetch(api("users/current"));
-    const j = await r.json().catch(() => ({}));
-    if (j.redirectURL) location.href = j.redirectURL;
-    else document.getElementById("signinErr").textContent = "No sign-in URL (" + r.status + ")";
-  };
-})();
-
-// ---- capture through the model (same proxy the apps use) ----
+/* ---- capture through the model (same proxy the apps use) ------------ */
 const PROXY = "https://todone-capture-owi5vfwija-uc.a.run.app/v1/capture";
 function deviceID() {
   try {
@@ -237,89 +457,93 @@ function deviceID() {
 function isoNow() {
   const d = new Date(), off = -d.getTimezoneOffset();
   const p = n => String(Math.abs(n)).padStart(2, "0");
-  const weekday = d.toLocaleDateString("en-US", {weekday: "long"});
+  const weekday = d.toLocaleDateString("en-US", { weekday:"long" });
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
          `${off>=0?"+":"-"}${p(Math.floor(Math.abs(off)/60))}:${p(Math.abs(off)%60)} (${weekday})`;
 }
 let idMap = {};
 function contextBlock(utterance) {
-  const open = records.filter(r => !(r.fields.CD_completedAt && r.fields.CD_completedAt.value));
+  const open = records.filter(r => !isDone(r));
   idMap = {};
-  const lines = [`CURRENT_TIME: ${isoNow()}`, `TIMEZONE: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`, "OPEN_TASKS:"];
+  const lines = [`CURRENT_TIME: ${isoNow()}`,
+                 `TIMEZONE: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
+                 "OPEN_TASKS:"];
   if (!open.length) lines.push("(none)");
   open.forEach((r, i) => {
-    const sid = "T" + (i+1); idMap[sid] = r;
-    const due = r.fields.CD_dueAt?.value ? new Date(r.fields.CD_dueAt.value).toISOString() : "none";
-    lines.push(`${sid} | ${r.fields.CD_title?.value ?? ""} | due: ${due}`);
+    const sid = "T" + (i + 1); idMap[sid] = r;
+    const due = dueOf(r) ? new Date(dueOf(r)).toISOString() : "none";
+    lines.push(`${sid} | ${titleOf(r)} | due: ${due}`);
   });
   lines.push("UTTERANCE:", utterance);
   return lines.join("\n");
 }
 async function capture(utterance, audioB64) {
-  document.getElementById("status").textContent = "Thinking…";
+  say("Thinking…", true);
   const parts = [];
-  if (audioB64) parts.push({ inline_data: { mime_type: "audio/wav", data: audioB64 } });
+  if (audioB64) parts.push({ inline_data: { mime_type:"audio/wav", data: audioB64 } });
   parts.push({ text: contextBlock(utterance || "") });
   let resp;
   try {
-    const r = await fetch(PROXY, { method: "POST",
-      headers: { "Content-Type": "application/json", "X-Todid-Device": deviceID() },
-      body: JSON.stringify({ contents: [{ role: "user", parts }] }) });
+    const r = await fetch(PROXY, { method:"POST",
+      headers: { "Content-Type":"application/json", "X-Todid-Device": deviceID() },
+      body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
-    if (!r.ok) { document.getElementById("status").textContent = "Capture failed: " + (resp.message || resp.error || r.status); return; }
-  } catch (e) { document.getElementById("status").textContent = "Capture failed: " + e; return; }
+    if (!r.ok) { say("Capture failed: " + (resp.message || resp.error || r.status)); return; }
+  } catch (e) { say("Capture failed: " + e); return; }
+
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch { document.getElementById("status").textContent = "Couldn't read the model's reply"; return; }
+  catch { say("Couldn't read the reply from the model."); return; }
+
   const ops = [];
   for (const a of (agent.actions || [])) {
     if (a.type === "add_task" && a.title) {
-      const fields = { CD_title: { value: a.title }, CD_id: { value: crypto.randomUUID().toUpperCase() },
-                       CD_entityName: { value: "TodoTask" }, CD_createdAt: { value: Date.now() } };
+      const fields = { CD_title:{ value:a.title }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+                       CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() } };
       const t = a.due_at ? Date.parse(a.due_at) : NaN;
       if (!isNaN(t)) fields.CD_dueAt = { value: t };
-      ops.push({ operationType: "create", record: { recordType: "CD_TodoTask", fields } });
+      ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields } });
     } else if (a.type === "complete_task") {
       for (const sid of (a.target_task_ids || [])) {
         const r = idMap[sid]; if (!r) continue;
-        ops.push({ operationType: "update", record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag,
-          recordType: "CD_TodoTask", fields: { CD_completedAt: { value: Date.now() } } } });
+        ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
+          recordType:"CD_TodoTask", fields:{ CD_completedAt:{ value: Date.now() } } } });
       }
     } else if (a.type === "reschedule_task") {
       const t = a.due_at ? Date.parse(a.due_at) : NaN;
       for (const sid of (a.target_task_ids || [])) {
         const r = idMap[sid]; if (!r) continue;
-        ops.push({ operationType: "update", record: { recordName: r.recordName, recordChangeTag: r.recordChangeTag,
-          recordType: "CD_TodoTask", fields: { CD_dueAt: isNaN(t) ? { value: null } : { value: t } } } });
+        ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
+          recordType:"CD_TodoTask", fields:{ CD_dueAt: isNaN(t) ? { value:null } : { value:t } } } });
       }
     }
   }
   if (ops.length) {
     const w = await post("records/modify", { zoneID: ZONE, operations: ops });
-    if (w.status !== 200) { document.getElementById("status").textContent = "Save failed: " + (w.json.reason || w.status); return; }
+    if (w.status !== 200) { say("Saved nothing — " + (w.json.reason || w.status)); return; }
   }
-  document.getElementById("status").textContent = agent.reply || "Done";
+  say(agent.reply || "Done.");
   refresh();
 }
 
-// ---- microphone: click to talk, click to send (16 kHz mono WAV, like the apps) ----
-let rec = null;
+/* ---- microphone: click to talk, click to send ------------------------ */
+let rec = null, recTimer = null;
 async function micToggle() {
-  const btn = document.getElementById("micBtn");
-  if (rec) { // stop & send
+  const btn = $("micBtn");
+  if (rec) {
     const { ctx, node, stream, chunks, rate } = rec; rec = null;
+    clearInterval(recTimer);
     node.disconnect(); stream.getTracks().forEach(t => t.stop()); ctx.close();
-    btn.style.background = "var(--accent)"; btn.textContent = "🎙️";
+    btn.classList.remove("recording"); btn.innerHTML = MIC_ICON;
+
     let total = 0; for (const c of chunks) total += c.length;
-    if (total < 4000) { document.getElementById("status").textContent = "Too short — click, talk, click again"; return; }
+    if (total < 4000) { say("That was too short — click, talk, then click again."); return; }
     const all = new Float32Array(total); let o = 0;
     for (const c of chunks) { all.set(c, o); o += c.length; }
     const ratio = rate / 16000, n = Math.floor(all.length / ratio);
     const pcm = new Int16Array(n);
-    for (let i = 0; i < n; i++) {
-      const v = all[Math.floor(i * ratio)];
-      pcm[i] = Math.max(-32768, Math.min(32767, v * 32767));
-    }
+    for (let i = 0; i < n; i++) pcm[i] = Math.max(-32768, Math.min(32767, all[Math.floor(i * ratio)] * 32767));
+
     const wav = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(wav);
     const ws = (off, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)); };
     ws(0, "RIFF"); dv.setUint32(4, 36 + pcm.length * 2, true); ws(8, "WAVEfmt ");
@@ -327,8 +551,6 @@ async function micToggle() {
     dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true);
     dv.setUint16(34, 16, true); ws(36, "data"); dv.setUint32(40, pcm.length * 2, true);
     new Int16Array(wav, 44).set(pcm);
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(wav).subarray(0, 0))) || "";
-    // chunked base64 (large arrays overflow the argument list)
     const bytes = new Uint8Array(wav); let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     capture("", btoa(bin));
@@ -343,16 +565,80 @@ async function micToggle() {
     node.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
     src.connect(node); node.connect(ctx.destination);
     rec = { ctx, node, stream, chunks, rate: ctx.sampleRate };
-    btn.style.background = "#D91E63"; btn.textContent = "⏹";
-    document.getElementById("status").textContent = "Listening… click ⏹ to send";
-  } catch (e) { document.getElementById("status").textContent = "Microphone blocked: " + e.name; }
+    btn.classList.add("recording"); btn.innerHTML = MIC_STOP_ICON;
+    const t0 = Date.now();
+    const tickText = () => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      say(`Listening — ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")} · click ■ to send`, true);
+    };
+    tickText();
+    recTimer = setInterval(tickText, 500);
+  } catch (e) {
+    say("The microphone is blocked in this browser (" + e.name + ").");
+  }
 }
-document.getElementById("micBtn").onclick = micToggle;
-document.getElementById("signout").onclick = () => {
+
+/* ---- wiring --------------------------------------------------------- */
+$("add").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = $("newTitle").value.trim();
+  if (!text) return;
+  $("newTitle").value = "";
+  capture(text, null);
+});
+$("micBtn").onclick = micToggle;
+$("search").addEventListener("input", e => { query = e.target.value; render(); });
+for (const b of document.querySelectorAll(".navitem")) {
+  b.onclick = () => {
+    view = b.dataset.view;
+    for (const o of document.querySelectorAll(".navitem")) o.classList.toggle("on", o === b);
+    $("side").classList.remove("mobile-visible");
+    render();
+  };
+}
+$("menuBtn").onclick = () => $("side").classList.toggle("mobile-visible");
+$("signout").onclick = () => {
   try { localStorage.removeItem("ckSession"); } catch {}
   location.reload();
 };
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("newTitle").focus(); }
+  if (e.key === "Escape" && document.activeElement === $("search")) {
+    $("search").value = ""; query = ""; render(); $("search").blur();
+  }
+});
 
+(async function boot() {
+  if (!window.TODID_CK_TOKEN) { show("setup"); return; }
+  const params = new URLSearchParams(location.search);
+  const fromURL = params.get("ckSession");
+  if (fromURL) {
+    try { localStorage.setItem("ckSession", fromURL); } catch {}
+    history.replaceState(null, "", location.pathname);
+  }
+  if (session()) {
+    const me = await fetch(api("users/current"));
+    if (me.status === 200) {
+      const id = await me.json();
+      const name = (id.nameComponents && id.nameComponents.givenName) || "Signed in";
+      $("whoami").textContent = name;
+      $("signout").classList.remove("hidden");
+      show("list");
+      say("Loading…", true);
+      await refresh();
+      say("");
+      return;
+    }
+    try { localStorage.removeItem("ckSession"); } catch {}
+  }
+  show("signin");
+  $("signinBtn").onclick = async () => {
+    const r = await fetch(api("users/current"));
+    const j = await r.json().catch(() => ({}));
+    if (j.redirectURL) location.href = j.redirectURL;
+    else $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
+  };
+})();
 </script>
 </body>
 </html>
