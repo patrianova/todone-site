@@ -55,10 +55,19 @@
       <div class="demo-transcript" id="demoText"></div>
       <div class="waveform" id="wave"></div>
       <div class="demo-result" id="demoResult" style="opacity:0; transition:opacity .4s ease;">
-        <span class="circle"></span>
-        <div>
-          <div class="title" id="demoTitle"></div>
-          <div class="meta" id="demoMeta"></div>
+        <div class="demo-row">
+          <span class="circle"></span>
+          <div>
+            <div class="title" id="demoTitle1"></div>
+            <div class="meta" id="demoMeta1"></div>
+          </div>
+        </div>
+        <div class="demo-row">
+          <span class="circle"></span>
+          <div>
+            <div class="title" id="demoTitle2"></div>
+            <div class="meta" id="demoMeta2"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -147,7 +156,11 @@
     wave.appendChild(s);
   }
 
-  const line = "Ligar pro Vanguard amanhã às cinco pra fazer o rollover do 401k";
+  const line = "Call the dentist tomorrow at nine, and I need to renew the passport before Friday";
+  const filed = [
+    ["Call the dentist", "Tomorrow, 9:00 AM"],
+    ["Renew the passport", "Friday · reminder set"],
+  ];
   const text = document.getElementById("demoText");
   const result = document.getElementById("demoResult");
   const stateEl = document.getElementById("demoState");
@@ -156,12 +169,18 @@
 
   if (reduce) {
     text.textContent = line;
-    document.getElementById("demoTitle").textContent = "Ligar pro Vanguard pra fazer o rollover do 401k";
-    document.getElementById("demoMeta").textContent = "Tomorrow, 5:00 PM · task";
+    fill();
     result.style.opacity = 1;
-    stateEl.textContent = "Filed";
-    timeEl.textContent = "0:09";
+    stateEl.textContent = "2 tasks filed";
+    timeEl.textContent = "0:07";
     return;
+  }
+
+  function fill() {
+    filed.forEach(([title, meta], i) => {
+      document.getElementById("demoTitle" + (i + 1)).textContent = title;
+      document.getElementById("demoMeta" + (i + 1)).textContent = meta;
+    });
   }
 
   function run() {
@@ -182,10 +201,9 @@
         setTimeout(() => {
           clearInterval(tick);
           text.textContent = line;
-          stateEl.textContent = "Filed";
+          stateEl.textContent = "2 tasks filed";
           wave.style.opacity = 0.25;
-          document.getElementById("demoTitle").textContent = "Ligar pro Vanguard pra fazer o rollover do 401k";
-          document.getElementById("demoMeta").textContent = "Tomorrow, 5:00 PM · task";
+          fill();
           result.style.opacity = 1;
           setTimeout(run, 5200);
         }, 700);
