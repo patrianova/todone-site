@@ -662,6 +662,12 @@ async function capture(utterance, audioB64) {
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
   catch { busy = false; say("I couldn't read the reply. Nothing was filed."); return; }
+  // The model writes what it heard before it acts. No words → nothing is filed,
+  // whatever it put in `actions` (silence used to come back as "buy onions").
+  if ("transcript" in agent) {
+    const words = String(agent.transcript || "").split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w));
+    if (words.length < 2) { busy = false; say("I didn't hear anything — try again?", ""); return; }
+  }
 
   const ops = [];
   for (const a of (agent.actions || [])) {
@@ -722,6 +728,11 @@ async function micToggle() {
     if (total < 4000) { say("That was too short to hear — click the mic, talk, then click stop."); return; }
     const all = new Float32Array(total); let o = 0;
     for (const c of chunks) { all.set(c, o); o += c.length; }
+    // Nothing said → nothing sent. Room tone peaks well under 0.005 (≈ -46 dBFS);
+    // speech clears 0.02 easily. Silence handed to the model comes back as an
+    // errand nobody asked for.
+    let peak = 0; for (let i = 0; i < all.length; i++) { const v = Math.abs(all[i]); if (v > peak) peak = v; }
+    if (peak < 0.005) { say("I didn't hear anything — try again?", ""); return; }
     const ratio = rate / 16000, n = Math.floor(all.length / ratio);
     const pcm = new Int16Array(n);
     for (let i = 0; i < n; i++) pcm[i] = Math.max(-32768, Math.min(32767, all[Math.floor(i * ratio)] * 32767));
