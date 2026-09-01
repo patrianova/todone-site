@@ -785,14 +785,14 @@ $("signout").onclick = () => {
   location.reload();
 };
 /* A task completed on the phone or the Mac has to show up here without a reload,
-   so re-query when the tab regains attention and on a slow heartbeat while visible.
+   so re-query when the tab regains attention and every six seconds while visible.
    Never while a capture is in flight or the mic is open. */
 function canAutoRefresh() {
   return document.visibilityState === "visible" && !busy && !rec && !!session();
 }
 document.addEventListener("visibilitychange", () => { if (canAutoRefresh()) refresh(); });
 window.addEventListener("focus", () => { if (canAutoRefresh()) refresh(); });
-setInterval(() => { if (canAutoRefresh()) refresh(); }, 20000);
+setInterval(() => { if (canAutoRefresh()) refresh(); }, 6000);
 
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("newTitle").focus(); }
