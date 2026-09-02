@@ -1,14 +1,26 @@
-# to-did website
+# to-did.app
 
-Source for the To-did site and web app. **Hosting is Firebase**, in the same
-Google Cloud project that runs the capture proxy and bills Gemini
-(`todone-51870`). GitHub Pages is deliberately switched off — one live site only.
+The website and the web app, on Firebase Hosting (project `todone-51870`, custom domain `to-did.app`).
 
-Deploy:
+| path | what |
+|---|---|
+| `index.html`, `style.css` | the site: what To-did is, pricing, the links |
+| `app/index.html` | the web app — the same list as the iPhone and the Mac, read and written through CloudKit's web services with the person's own Apple ID |
+| `privacy/`, `terms/`, `support/` | the policies and the support page |
+| `firebase.json` | hosting config; rewrites `/v1/**` to the capture proxy on Cloud Run |
 
-    firebase deploy --only hosting --project todone-51870
+## The web app
 
-Live at https://todone-51870.web.app (custom domain to-did.app to follow).
+- Signs in with Apple ID through CloudKit JS' web auth; the session token lives only in the browser (`localStorage`).
+- Reads the list with `records/query` every six seconds while the tab is visible; writes are optimistic and keep the returned change tag so the next edit is not a conflict.
+- Captures by mic (peak measured before upload — silence is not sent) or typed text, through the same proxy as the apps; refuses to file anything when the model's transcript has no words.
+- Edits title and date in place; deletes at once and sends the delete five seconds later unless Undo is tapped; clears the list by scope when the voice asks.
+- Shows the allowance and the upgrade link; purchases happen in the iPhone or Mac app.
 
-`firebase.json` also rewrites `/v1/**` to the `todone-capture` Cloud Run service,
-so the web app calls the capture API same-origin — no CORS hop.
+## Deploying
+
+```bash
+firebase deploy --only hosting
+```
+
+The site is plain HTML/CSS/JS with no build step. Keep `app/index.html` self-contained; it is served with the same CSP as the rest of the site.
