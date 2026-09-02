@@ -138,6 +138,7 @@
   .task:hover .actions, .task:focus-within .actions { opacity:1; }
   .actions button { background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0; }
   .actions button:hover { color:var(--ink); }
+  .hint.act { background:none; border:none; padding:0; font:inherit; color:var(--accent); cursor:pointer; text-decoration:underline; }
   .title { cursor:text; }
   .editor { display:flex; flex-direction:column; gap:8px; padding:2px 0 6px; }
   .editor .etitle { font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--rule); border-radius:10px; background:var(--card); color:var(--ink); }
@@ -333,7 +334,7 @@ let sayTimer = null;
  * The one place the app tells you what it is doing.
  *  kind: "live" (recording) | "busy" (thinking) | "said" (the agent replied) | "" (plain/error)
  */
-function say(text, kind, hint) {
+function say(text, kind, hint, onHint) {
   const el = $("status");
   clearTimeout(sayTimer);
   el.className = "status";
@@ -352,9 +353,10 @@ function say(text, kind, hint) {
   const t = el.querySelector(".text");
   t.textContent = text;
   if (hint) {
-    const h = document.createElement("div");
-    h.className = "hint";
+    const h = document.createElement(onHint ? "button" : "div");
+    h.className = "hint" + (onHint ? " act" : "");
     h.textContent = hint;
+    if (onHint) h.onclick = onHint;
     t.appendChild(h);
   }
   // Replies and errors fade; live/busy states persist until they change.
@@ -572,20 +574,36 @@ async function toggle(r, complete) {
     say("Couldn't save that — " + (resp.json.reason || resp.status));
   }
 }
-async function del(r) {
-  if (!confirm("Delete “" + titleOf(r) + "”?")) return;
-  const index = records.findIndex(x => x.recordName === r.recordName);
-  records = records.filter(x => x.recordName !== r.recordName);
+/* Deleting asks no question. The row goes at once; the server hears about it
+   five seconds later unless you tap Undo. One mechanism serves a swipe on a row
+   and "clear my tasks" alike. */
+let pendingDelete = null;
+function del(r) { deleteRecords([r], "Deleted “" + titleOf(r) + "”."); }
+function deleteRecords(list, text) {
+  flushPendingDelete();
+  const names = new Set(list.map(r => r.recordName));
+  const positions = list.map(r => ({ r, i: records.findIndex(x => x.recordName === r.recordName) }));
+  records = records.filter(x => !names.has(x.recordName));
   render();
-  const resp = await post("records/modify", { zoneID: ZONE,
-    operations: [{ operationType:"forceDelete", record: { recordName: r.recordName } }] });
-  if (resp.status === 200) { say("Deleted.", "said"); }
-  else {
-    records.splice(Math.max(0, index), 0, r);
-    render();
-    say("Couldn't delete that — " + (resp.json.reason || resp.status));
+  const timer = setTimeout(flushPendingDelete, 5000);
+  pendingDelete = { list, positions, timer };
+  say(text, "said", "Undo", () => {
+    clearTimeout(timer); pendingDelete = null;
+    positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
+    render(); say("Put back.", "said");
+  });
+}
+async function flushPendingDelete() {
+  if (!pendingDelete) return;
+  const { list, positions, timer } = pendingDelete; clearTimeout(timer); pendingDelete = null;
+  const ops = list.map(r => ({ operationType:"forceDelete", record:{ recordName: r.recordName } }));
+  const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
+  if (resp.status !== 200) {
+    positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
+    render(); say("Couldn't delete that — " + (resp.json.reason || resp.status));
   }
 }
+window.addEventListener("pagehide", flushPendingDelete);
 /* Edit in place: the title, and the date — a to-do list you can correct by hand,
    not only by voice. One update carries both fields; the change tag comes back
    with it so the next edit is not rejected as a conflict. */
@@ -718,7 +736,7 @@ async function capture(utterance, audioB64) {
     if (words.length < 2) { busy = false; say("I didn't hear anything — try again?", ""); return; }
   }
 
-  const ops = [];
+  const ops = []; let clearing = null;
   for (const a of (agent.actions || [])) {
     if (a.type === "add_task" && a.title) {
       const fields = { CD_title:{ value:a.title }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
@@ -732,6 +750,10 @@ async function capture(utterance, audioB64) {
         ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
           recordType:"CD_TodoTask", fields:{ CD_completedAt:{ value: Date.now() } } } });
       }
+    } else if (a.type === "clear_tasks") {
+      const scope = a.scope;
+      const hit = records.filter(r => scope === "all" || (scope === "done" ? isDone(r) : scope === "open" ? !isDone(r) : false));
+      if (hit.length) clearing = { list: hit, text: `Deleted ${hit.length} task${hit.length === 1 ? "" : "s"}.` };
     } else if (a.type === "reschedule_task") {
       const t = a.due_at ? Date.parse(a.due_at) : NaN;
       for (const sid of (a.target_task_ids || [])) {
@@ -757,7 +779,8 @@ async function capture(utterance, audioB64) {
     render();
   }
   busy = false;
-  say(agent.reply || "Filed.", "said");
+  if (clearing) deleteRecords(clearing.list, (agent.reply ? agent.reply + " " : "") + clearing.text);
+  else say(agent.reply || "Filed.", "said");
   refreshQuota();
   // Reconcile with the server once it has caught up.
   setTimeout(refresh, 2500);
