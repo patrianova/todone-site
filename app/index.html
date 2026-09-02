@@ -713,7 +713,10 @@ async function capture(utterance, audioB64) {
   try {
     const r = await fetch(PROXY, { method:"POST",
       headers: { "Content-Type":"application/json", "X-Todid-Device": deviceID(),
-                 "X-Todid-User": ckUser },
+                 "X-Todid-User": ckUser,
+                 // A browser cannot prove what it is, but it can prove who is
+                 // signed in: the proxy asks CloudKit whose session this is.
+                 "X-Todid-CKSession": session() },
       body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
     if (r.status === 429) {
