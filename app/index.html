@@ -138,6 +138,14 @@
   .task:hover .actions, .task:focus-within .actions { opacity:1; }
   .actions button { background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0; }
   .actions button:hover { color:var(--ink); }
+  .title { cursor:text; }
+  .editor { display:flex; flex-direction:column; gap:8px; padding:2px 0 6px; }
+  .editor .etitle { font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--rule); border-radius:10px; background:var(--card); color:var(--ink); }
+  .editor .erow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--body); }
+  .editor .edue { font:inherit; font-size:13px; padding:5px 8px; border:1px solid var(--rule); border-radius:8px; background:var(--card); color:var(--ink); }
+  .editor .edue:disabled { opacity:.45; }
+  .editor .esave { font:inherit; font-size:13px; font-weight:600; padding:6px 14px; border:none; border-radius:100px; background:var(--accent); color:#fff; cursor:pointer; }
+  .editor .ecancel { font:inherit; font-size:13px; padding:6px 10px; border:none; background:none; color:var(--muted); cursor:pointer; }
 
   .empty { padding:80px 0; text-align:center; color:var(--faint); font-size:15px; }
   .empty strong { display:block; color:var(--ink); font-size:19px; font-weight:600; margin-bottom:6px; }
@@ -476,7 +484,7 @@ function row(r) {
     <button class="check" title="${done ? "Reopen" : "Complete"}"></button>
     <div class="body"><div class="title"></div></div>
     <div class="actions">
-      <button class="edit" title="Rename">
+      <button class="edit" title="Edit">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-4l12-12 4 4L7 21z"/></svg>
       </button>
       <button class="del" title="Delete">
@@ -493,7 +501,8 @@ function row(r) {
   }
   el.querySelector(".check").onclick = () => toggle(r, !done);
   el.querySelector(".del").onclick = () => del(r);
-  el.querySelector(".edit").onclick = () => rename(r);
+  el.querySelector(".edit").onclick = () => edit(r, el);
+  el.querySelector(".title").onclick = () => edit(r, el);
   return el;
 }
 
@@ -577,26 +586,66 @@ async function del(r) {
     say("Couldn't delete that — " + (resp.json.reason || resp.status));
   }
 }
-async function rename(r) {
-  const next = prompt("Rename task", titleOf(r));
-  if (next === null) return;
-  const title = next.trim();
-  if (!title || title === titleOf(r)) return;
-  const before = r.fields.CD_title;
+/* Edit in place: the title, and the date — a to-do list you can correct by hand,
+   not only by voice. One update carries both fields; the change tag comes back
+   with it so the next edit is not rejected as a conflict. */
+function edit(r, rowEl) {
+  if (rowEl.querySelector(".editor")) return;
+  const body = rowEl.querySelector(".body");
+  const due = dueOf(r);
+  const form = document.createElement("form");
+  form.className = "editor";
+  form.innerHTML = `
+    <input class="etitle" type="text" maxlength="200" autocomplete="off">
+    <div class="erow">
+      <label><input class="ehas" type="checkbox"> Reminder</label>
+      <input class="edue" type="datetime-local" step="60">
+    </div>
+    <div class="erow">
+      <button type="submit" class="esave">Save</button>
+      <button type="button" class="ecancel">Cancel</button>
+    </div>`;
+  const title = form.querySelector(".etitle"), has = form.querySelector(".ehas"), when = form.querySelector(".edue");
+  title.value = titleOf(r);
+  has.checked = !!due;
+  when.value = toLocalInput(due || defaultDue());
+  when.disabled = !due;
+  has.onchange = () => { when.disabled = !has.checked; if (has.checked) when.focus(); };
+  form.querySelector(".ecancel").onclick = () => render();
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const next = title.value.trim();
+    if (!next) { title.focus(); return; }
+    const nextDue = has.checked ? Date.parse(when.value) : null;
+    if (has.checked && isNaN(nextDue)) { when.focus(); return; }
+    await save(r, next, nextDue);
+  };
+  body.replaceChildren(form);
+  title.focus(); title.select();
+}
+function defaultDue() { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.getTime(); }
+function toLocalInput(ms) {
+  const d = new Date(ms), pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+async function save(r, title, dueMs) {
+  const before = { title: r.fields.CD_title, due: r.fields.CD_dueAt };
   r.fields.CD_title = { value: title };
+  r.fields.CD_dueAt = dueMs === null ? { value: null } : { value: dueMs };
   render();
   const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
-              fields: { CD_title: { value: title } } } }] });
+              fields: { CD_title: { value: title }, CD_dueAt: dueMs === null ? { value: null } : { value: dueMs } } } }] });
   if (resp.status === 200) {
     const fresh = (resp.json.records || [])[0];
     if (fresh) {
       const i = records.findIndex(x => x.recordName === fresh.recordName);
       if (i >= 0) { records[i] = fresh; render(); }
     }
+    say("Saved.", "said");
   } else {
-    r.fields.CD_title = before; render();
-    say("Couldn't rename that — " + (resp.json.reason || resp.status));
+    r.fields.CD_title = before.title; r.fields.CD_dueAt = before.due; render();
+    say("Couldn't save that — " + (resp.json.reason || resp.status));
   }
 }
 
