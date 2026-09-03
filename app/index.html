@@ -134,6 +134,11 @@
   .task.is-done .title { color:var(--done); text-decoration:line-through; }
   .task .meta { font-size:13px; color:var(--faint); }
   .task.overdue .meta { color:var(--accent); font-weight:500; }
+  .task .rep { font-size:12px; color:var(--faint); }
+  .editor .erow select, .editor .erow input[type=number] { font:inherit; }
+  .wd { display:flex; gap:4px; }
+  .wd button { width:28px; height:28px; border-radius:50%; border:1px solid var(--faint); background:transparent; color:inherit; font-size:11px; font-weight:600; cursor:pointer; }
+  .wd button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
   .actions { display:flex; align-items:center; gap:12px; color:var(--done); opacity:0; }
   .task:hover .actions, .task:focus-within .actions { opacity:1; }
   .actions button { background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0; }
@@ -404,6 +409,56 @@ function zoneMissing(payload) {
 function isDone(r) { return !!(r.fields.CD_completedAt && r.fields.CD_completedAt.value); }
 function dueOf(r) { return r.fields.CD_dueAt && r.fields.CD_dueAt.value; }
 function titleOf(r) { return (r.fields.CD_title && r.fields.CD_title.value) || "(untitled)"; }
+function fieldOf(r, k) { const f = r.fields[k]; return f && f.value != null ? f.value : null; }
+// Recurrence, the same small vocabulary the apps use: every N days/weeks/months/years,
+// weekly optionally on several ISO weekdays (Mon=1 … Sun=7).
+function ruleOf(r) {
+  const f = fieldOf(r, "CD_recurrenceFrequency");
+  if (!["daily","weekly","monthly","yearly"].includes(f)) return null;
+  const interval = Math.min(99, Math.max(1, Number(fieldOf(r, "CD_recurrenceInterval")) || 1));
+  const weekdays = String(fieldOf(r, "CD_recurrenceWeekdays") || "").split(",").map(Number).filter(n => n >= 1 && n <= 7);
+  return { frequency: f, interval, weekdays: [...new Set(weekdays)].sort() };
+}
+function ruleFields(rule) {
+  return rule
+    ? { CD_recurrenceFrequency:{ value: rule.frequency }, CD_recurrenceInterval:{ value: rule.interval },
+        CD_recurrenceWeekdays:{ value: rule.weekdays.join(",") } }
+    : { CD_recurrenceFrequency:{ value:null }, CD_recurrenceInterval:{ value:null }, CD_recurrenceWeekdays:{ value:null } };
+}
+function isoWeekday(d) { const w = d.getDay(); return w === 0 ? 7 : w; }
+function nextDate(rule, fromMs) {
+  const d = new Date(fromMs);
+  if (rule.frequency === "daily")   { d.setDate(d.getDate() + rule.interval); return d.getTime(); }
+  if (rule.frequency === "monthly") { d.setMonth(d.getMonth() + rule.interval); return d.getTime(); }
+  if (rule.frequency === "yearly")  { d.setFullYear(d.getFullYear() + rule.interval); return d.getTime(); }
+  const wanted = rule.weekdays.length ? rule.weekdays : [isoWeekday(d)];
+  const week0 = mondayOf(d);
+  for (let off = 1; off <= rule.interval * 7 + 7; off++) {
+    const c = new Date(fromMs); c.setDate(c.getDate() + off);
+    if (!wanted.includes(isoWeekday(c))) continue;
+    const weeks = Math.round((mondayOf(c) - week0) / 604800000);
+    if (weeks === 0 || weeks % rule.interval === 0) return c.getTime();
+  }
+  return null;
+}
+function mondayOf(d) { const m = new Date(d); m.setHours(0,0,0,0); m.setDate(m.getDate() - (isoWeekday(m) - 1)); return m.getTime(); }
+// The first occurrence after now, so an old recurring task is not cleared one missed copy at a time.
+function nextAfterNow(rule, dueMs) {
+  let t = dueMs;
+  for (let i = 0; i < 10000; i++) { t = nextDate(rule, t); if (t === null || t > Date.now()) return t; }
+  return null;
+}
+const WD = ["M","T","W","T","F","S","S"];
+function ruleLabel(rule) {
+  const n = rule.interval, f = rule.frequency;
+  let s = n === 1 ? { daily:"Every day", weekly:"Every week", monthly:"Every month", yearly:"Every year" }[f]
+                  : `Every ${n} ${ { daily:"days", weekly:"weeks", monthly:"months", yearly:"years" }[f] }`;
+  if (f === "weekly" && rule.weekdays.length) {
+    const names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    s += " · " + rule.weekdays.map(i => names[i - 1]).join(", ");
+  }
+  return s;
+}
 
 function bucketOf(r) {
   const due = dueOf(r);
@@ -501,6 +556,13 @@ function row(r) {
     meta.textContent = label;
     el.querySelector(".body").appendChild(meta);
   }
+  const rule = ruleOf(r);
+  if (rule && !done) {
+    const rep = document.createElement("div");
+    rep.className = "rep";
+    rep.textContent = "\u21bb " + ruleLabel(rule);
+    el.querySelector(".body").appendChild(rep);
+  }
   el.querySelector(".check").onclick = () => toggle(r, !done);
   el.querySelector(".del").onclick = () => del(r);
   el.querySelector(".edit").onclick = () => edit(r, el);
@@ -555,19 +617,43 @@ async function refresh() {
    round trip (and then a re-query) made every check feel broken. */
 async function toggle(r, complete) {
   const before = r.fields.CD_completedAt;
-  r.fields.CD_completedAt = complete ? { value: Date.now() } : { value: null };
-  render();
-  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
+  const now = Date.now();
+  r.fields.CD_completedAt = complete ? { value: now } : { value: null };
+  const ops = [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
-              fields: { CD_completedAt: complete ? { value: Date.now() } : { value: null } } } }] });
-  if (resp.status === 200) {
-    // Keep the new change tag, or the next edit of this row is rejected as a conflict.
-    const fresh = (resp.json.records || [])[0];
-    if (fresh) {
-      const i = records.findIndex(x => x.recordName === fresh.recordName);
-      if (i >= 0) records[i] = fresh;
-      render();
+              fields: { CD_completedAt: complete ? { value: now } : { value: null } } } }];
+  const rule = ruleOf(r), due = dueOf(r), myID = fieldOf(r, "CD_id");
+  if (complete && rule && due) {
+    // Completing one occurrence files the next, unless another device already did.
+    const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || myID;
+    const next = nextAfterNow(rule, due);
+    const exists = next !== null && records.some(x => !isDone(x) && fieldOf(x, "CD_recurrenceSeriesID") === seriesID
+                                                   && Math.abs((dueOf(x) || 0) - next) < 1000);
+    if (next !== null && !exists) {
+      ops[0].record.fields.CD_recurrenceSeriesID = { value: seriesID };
+      ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
+        CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+        CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: now }, CD_dueAt:{ value: next },
+        CD_sourceUtterance:{ value: fieldOf(r, "CD_sourceUtterance") || "" },
+        ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: myID } } } });
     }
+  } else if (!complete && rule) {
+    // Reopening takes back the copy it generated, so the series is not on the list twice.
+    const child = records.find(x => !isDone(x) && fieldOf(x, "CD_recurrenceParentID") === myID);
+    if (child) ops.push({ operationType:"forceDelete", record:{ recordName: child.recordName, recordType:"CD_TodoTask" } });
+  }
+  render();
+  const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
+  if (resp.status === 200) {
+    // Keep the new change tags, or the next edit of these rows is rejected as a conflict.
+    for (const fresh of (resp.json.records || [])) {
+      if (!fresh.recordName) continue;
+      const i = records.findIndex(x => x.recordName === fresh.recordName);
+      if (fresh.deleted) { if (i >= 0) records.splice(i, 1); }
+      else if (i >= 0) records[i] = fresh;
+      else if (fresh.fields) records.push(fresh);
+    }
+    render();
   } else {
     r.fields.CD_completedAt = before;
     render();
@@ -619,6 +705,11 @@ function edit(r, rowEl) {
       <label><input class="ehas" type="checkbox"> Reminder</label>
       <input class="edue" type="datetime-local" step="60">
     </div>
+    <div class="erow erep">
+      <label>Repeat <select class="efreq"><option value="">Never</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label>
+      <label class="eint">every <input class="einterval" type="number" min="1" max="99" value="1" style="width:3.5em"></label>
+      <span class="wd"></span>
+    </div>
     <div class="erow">
       <button type="submit" class="esave">Save</button>
       <button type="button" class="ecancel">Cancel</button>
@@ -628,7 +719,25 @@ function edit(r, rowEl) {
   has.checked = !!due;
   when.value = toLocalInput(due || defaultDue());
   when.disabled = !due;
-  has.onchange = () => { when.disabled = !has.checked; if (has.checked) when.focus(); };
+  const rule0 = ruleOf(r);
+  const freq = form.querySelector(".efreq"), interval = form.querySelector(".einterval"), wd = form.querySelector(".wd");
+  let days = new Set(rule0 ? rule0.weekdays : []);
+  freq.value = rule0 ? rule0.frequency : "";
+  interval.value = rule0 ? rule0.interval : 1;
+  const syncRep = () => {
+    form.querySelector(".eint").hidden = !freq.value;
+    wd.hidden = freq.value !== "weekly";
+    if (freq.value === "weekly" && !days.size) days.add(isoWeekday(new Date(Date.parse(when.value) || defaultDue())));
+    wd.replaceChildren(...WD.map((l, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = l;
+      if (days.has(i + 1)) b.classList.add("on");
+      b.onclick = () => { if (days.has(i + 1)) { if (days.size > 1) days.delete(i + 1); } else days.add(i + 1); syncRep(); };
+      return b;
+    }));
+  };
+  freq.onchange = () => { if (freq.value && !has.checked) { has.checked = true; when.disabled = false; } syncRep(); };
+  syncRep();
+  has.onchange = () => { when.disabled = !has.checked; if (!has.checked) { freq.value = ""; syncRep(); } if (has.checked) when.focus(); };
   form.querySelector(".ecancel").onclick = () => render();
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -636,7 +745,11 @@ function edit(r, rowEl) {
     if (!next) { title.focus(); return; }
     const nextDue = has.checked ? Date.parse(when.value) : null;
     if (has.checked && isNaN(nextDue)) { when.focus(); return; }
-    await save(r, next, nextDue);
+    const rule = has.checked && freq.value
+      ? { frequency: freq.value, interval: Math.min(99, Math.max(1, Number(interval.value) || 1)),
+          weekdays: freq.value === "weekly" ? [...days].sort() : [] }
+      : null;
+    await save(r, next, nextDue, rule);
   };
   body.replaceChildren(form);
   title.focus(); title.select();
@@ -646,14 +759,16 @@ function toLocalInput(ms) {
   const d = new Date(ms), pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-async function save(r, title, dueMs) {
-  const before = { title: r.fields.CD_title, due: r.fields.CD_dueAt };
+async function save(r, title, dueMs, rule) {
+  const before = { title: r.fields.CD_title, due: r.fields.CD_dueAt, rep: ruleOf(r) };
+  const repFields = ruleFields(rule || null);
   r.fields.CD_title = { value: title };
   r.fields.CD_dueAt = dueMs === null ? { value: null } : { value: dueMs };
+  Object.assign(r.fields, repFields);
   render();
   const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
-              fields: { CD_title: { value: title }, CD_dueAt: dueMs === null ? { value: null } : { value: dueMs } } } }] });
+              fields: { CD_title: { value: title }, CD_dueAt: dueMs === null ? { value: null } : { value: dueMs }, ...repFields } } }] });
   if (resp.status === 200) {
     const fresh = (resp.json.records || [])[0];
     if (fresh) {
@@ -662,7 +777,7 @@ async function save(r, title, dueMs) {
     }
     say("Saved.", "said");
   } else {
-    r.fields.CD_title = before.title; r.fields.CD_dueAt = before.due; render();
+    r.fields.CD_title = before.title; r.fields.CD_dueAt = before.due; Object.assign(r.fields, ruleFields(before.rep)); render();
     say("Couldn't save that — " + (resp.json.reason || resp.status));
   }
 }
@@ -746,12 +861,31 @@ async function capture(utterance, audioB64) {
                        CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() } };
       const t = a.due_at ? Date.parse(a.due_at) : NaN;
       if (!isNaN(t)) fields.CD_dueAt = { value: t };
+      if (!isNaN(t) && ["daily","weekly","monthly","yearly"].includes(a.recurrence_frequency)) {
+        const wd = (a.recurrence_weekdays || []).filter(n => n >= 1 && n <= 7);
+        Object.assign(fields, ruleFields({ frequency: a.recurrence_frequency,
+          interval: Math.min(99, Math.max(1, Number(a.recurrence_interval) || 1)),
+          weekdays: a.recurrence_frequency === "weekly" ? (wd.length ? [...new Set(wd)].sort() : [isoWeekday(new Date(t))]) : [] }));
+      }
       ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields } });
     } else if (a.type === "complete_task") {
       for (const sid of (a.target_task_ids || [])) {
         const r = idMap[sid]; if (!r) continue;
+        const fields = { CD_completedAt:{ value: Date.now() } };
         ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
-          recordType:"CD_TodoTask", fields:{ CD_completedAt:{ value: Date.now() } } } });
+          recordType:"CD_TodoTask", fields } });
+        const rule = ruleOf(r), due = dueOf(r);
+        if (rule && due) {
+          const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || fieldOf(r, "CD_id");
+          const next = nextAfterNow(rule, due);
+          if (next !== null) {
+            fields.CD_recurrenceSeriesID = { value: seriesID };
+            ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
+              CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+              CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() }, CD_dueAt:{ value: next },
+              ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: fieldOf(r, "CD_id") } } } });
+          }
+        }
       }
     } else if (a.type === "clear_tasks") {
       const scope = a.scope;
