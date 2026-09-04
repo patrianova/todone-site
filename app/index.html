@@ -469,8 +469,9 @@ function bucketOf(r) {
   const days = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
   if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
-  if (days <= 7) return "This week";
-  return "Later";
+  // The week that is running, not seven rolling days: on a Thursday, next
+  // Wednesday belongs to next week. mondayOf() gives the week's own start.
+  return d.getTime() < mondayOf(today) + 604800000 ? "This week" : "Later";
 }
 function dueLabel(r) {
   const due = dueOf(r);
