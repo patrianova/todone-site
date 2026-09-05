@@ -1,7 +1,7 @@
-/* To-did — the brand sheet: Archivo, hairline dividers, one pink. */
+/* To-did — Archivo from the brand sheet, the app's own pink, hairline dividers. */
 
 :root {
-  --ink: #141414;
+  --ink: #1A1A19;
   --body: #6F6F69;
   --muted: #9A9A94;
   --faint: #B4B4AE;
@@ -11,7 +11,7 @@
   --hair: #F4F4F2;
   --canvas: #F2F1EF;
   --card: #FFFFFF;
-  --accent: #F0146B;
+  --accent: #FF2E77;
 }
 
 * { margin: 0; box-sizing: border-box; }
