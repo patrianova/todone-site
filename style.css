@@ -70,6 +70,7 @@ a { color: inherit; text-decoration: none; }
 }
 .wordmark { font-weight: 300; letter-spacing: -0.02em; }
 .wordmark b { font-weight: 800; }
+.wordmark .hy { color: var(--accent); }
 
 .nav-links { display: flex; align-items: center; gap: 32px; }
 .nav-links a { font-size: 15px; color: var(--body); }
