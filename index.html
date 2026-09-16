@@ -50,30 +50,23 @@
       <p class="hero-note">Free for 15 captures a month. On iPhone.</p>
     </div>
 
-    <div class="demo" aria-hidden="true">
-      <div class="demo-head">
-        <div class="demo-state">
-          <span class="demo-dot"></span>
-          <span class="demo-label" id="demoState">Listening</span>
+    <div class="phone" aria-hidden="true">
+      <div class="screen" id="screen">
+        <div class="app-top">
+          <img src="/icon.svg" width="26" height="26" alt="">
+          <span class="wordmark app-wm">To<span class="hy">-</span><b>did</b></span>
         </div>
-        <span class="demo-time" id="demoTime">0:00</span>
-      </div>
-      <div class="demo-transcript" id="demoText"></div>
-      <div class="waveform" id="wave"></div>
-      <div class="demo-result" id="demoResult" style="opacity:0; transition:opacity .4s ease;">
-        <div class="demo-row">
-          <span class="circle"></span>
-          <div>
-            <div class="title" id="demoTitle1"></div>
-            <div class="meta" id="demoMeta1"></div>
-          </div>
+        <div class="chips" id="chips"></div>
+        <div class="list" id="list"></div>
+        <div class="toast" id="toast"><span id="toastText"></span><b>Undo</b></div>
+        <div class="bar">
+          <span class="bar-field">Say something</span>
+          <span class="bar-mic" id="mic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span>
         </div>
-        <div class="demo-row">
-          <span class="circle"></span>
-          <div>
-            <div class="title" id="demoTitle2"></div>
-            <div class="meta" id="demoMeta2"></div>
-          </div>
+        <div class="sheet" id="sheet">
+          <div class="sheet-head"><span><span class="demo-dot"></span><span id="sheetState">Listening</span></span><span id="sheetTime">0:00</span></div>
+          <div class="sheet-text" id="sheetText"></div>
+          <div class="waveform" id="wave"></div>
         </div>
       </div>
     </div>
@@ -150,73 +143,86 @@
 </div>
 
 <script>
-// The hero demo replays one real capture: speech arriving, then the filed task.
-(function () {
-  const wave = document.getElementById("wave");
-  for (let i = 0; i < 14; i++) {
+(() => {
+  const $ = id => document.getElementById(id);
+  const list = $("list"), chips = $("chips"), sheet = $("sheet"), text = $("sheetText"),
+        state = $("sheetState"), time = $("sheetTime"), wave = $("wave"), mic = $("mic"),
+        toast = $("toast"), toastText = $("toastText");
+  for (let i = 0; i < 22; i++) {
     const s = document.createElement("span");
-    s.style.height = [20,36,52,28,44,56,32,48,24,40,54,26,44,18][i] + "px";
-    s.style.background = i % 3 === 2 ? "var(--accent)" : (i % 2 ? "var(--done)" : "var(--stroke)");
+    s.style.height = (8 + Math.round(Math.abs(Math.sin(i * 0.9)) * 22)) + "px";
     s.style.animationDuration = (0.42 + (i % 5) * 0.05) + "s";
     s.style.animationDelay = (i * 0.04) + "s";
     wave.appendChild(s);
   }
-
-  const line = "Call the dentist tomorrow at nine, and I need to renew the passport before Friday";
-  const filed = [
-    ["Call the dentist", "Tomorrow, 9:00 AM"],
-    ["Renew the passport", "Friday · reminder set"],
-  ];
-  const text = document.getElementById("demoText");
-  const result = document.getElementById("demoResult");
-  const stateEl = document.getElementById("demoState");
-  const timeEl = document.getElementById("demoTime");
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
 
-  if (reduce) {
+  const base = () => [
+    { id: "report", title: "Send the report", when: "Thu 18 Sep", group: "Later", tag: "work" },
+    { id: "bulb", title: "Change the living room bulb", group: "No date", tag: "home" },
+  ];
+  const order = ["Tomorrow", "Friday", "Later", "No date"];
+  let tasks = base();
+
+  function render() {
+    const counts = {};
+    tasks.forEach(t => { if (t.tag && !t.done) counts[t.tag] = (counts[t.tag] || 0) + 1; });
+    chips.innerHTML = '<span class="chip on">All</span>' +
+      Object.keys(counts).sort().map(k => `<span class="chip">${k} <i>${counts[k]}</i></span>`).join("") +
+      '<span class="chip plus">+</span>';
+    list.innerHTML = order.filter(g => tasks.some(t => t.group === g)).map(g => `
+      <div class="group"><div class="ghead">${g} <i>${tasks.filter(t => t.group === g).length}</i></div>
+      ${tasks.filter(t => t.group === g).map(t => `
+        <div class="row ${t.fresh ? "fresh" : ""} ${t.done ? "done" : ""}" data-id="${t.id}">
+          <span class="circle">${t.done ? '<svg viewBox="0 0 100 100"><path d="M24 54 L42 72 L78 30" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ""}</span>
+          <div><div class="title">${t.title}</div>
+          ${t.when ? `<div class="when">${t.when}</div>` : ""}
+          ${t.tag ? `<div class="tags"><span>${t.tag}</span></div>` : ""}</div>
+        </div>`).join("")}</div>`).join("");
+    tasks.forEach(t => t.fresh = false);
+  }
+
+  async function capture(line, after) {
+    mic.classList.add("live");
+    await wait(600);
+    sheet.classList.add("up"); text.textContent = ""; state.textContent = "Listening";
+    wave.style.opacity = 1; time.textContent = "0:00";
+    const t0 = Date.now();
+    const tick = setInterval(() => { time.textContent = "0:0" + Math.min(9, Math.floor((Date.now() - t0) / 1000)); }, 250);
+    for (let i = 1; i <= line.length; i++) { text.innerHTML = line.slice(0, i) + '<span class="cursor">…</span>'; await wait(48); }
     text.textContent = line;
-    fill();
-    result.style.opacity = 1;
-    stateEl.textContent = "2 tasks filed";
-    timeEl.textContent = "0:07";
-    return;
+    await wait(500);
+    clearInterval(tick); wave.style.opacity = 0.25; state.textContent = "Thinking";
+    await wait(900);
+    sheet.classList.remove("up"); mic.classList.remove("live");
+    await wait(350);
+    after();
   }
 
-  function fill() {
-    filed.forEach(([title, meta], i) => {
-      document.getElementById("demoTitle" + (i + 1)).textContent = title;
-      document.getElementById("demoMeta" + (i + 1)).textContent = meta;
+  function say(msg) { toastText.textContent = msg; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 3200); }
+
+  async function loop() {
+    tasks = base(); render();
+    if (reduce) {
+      tasks.unshift({ id: "milk", title: "Buy milk and bread", when: "Tomorrow 9:00 AM", group: "Tomorrow", tag: "shopping" },
+                    { id: "dentist", title: "Call the dentist", when: "Friday 3:00 PM", group: "Friday", tag: "health" });
+      render(); return;
+    }
+    await wait(1800);
+    await capture("Buy milk and bread tomorrow morning, and call the dentist Friday at three", () => {
+      tasks.unshift({ id: "milk", title: "Buy milk and bread", when: "Tomorrow 9:00 AM", group: "Tomorrow", tag: "shopping", fresh: true },
+                    { id: "dentist", title: "Call the dentist", when: "Friday 3:00 PM", group: "Friday", tag: "health", fresh: true });
+      render(); say("2 tasks added, reminders set");
     });
+    await wait(4200);
+    await capture("Já comprei o leite", () => {
+      const m = tasks.find(t => t.id === "milk"); m.done = true; render(); say("Pronto: Buy milk and bread");
+    });
+    await wait(4600);
+    loop();
   }
-
-  function run() {
-    text.innerHTML = "";
-    result.style.opacity = 0;
-    stateEl.textContent = "Listening";
-    wave.style.opacity = 1;
-    let i = 0, t0 = Date.now();
-    const tick = setInterval(() => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      timeEl.textContent = "0:" + String(s).padStart(2, "0");
-    }, 250);
-    const type = setInterval(() => {
-      i++;
-      text.innerHTML = line.slice(0, i) + '<span class="cursor">…</span>';
-      if (i >= line.length) {
-        clearInterval(type);
-        setTimeout(() => {
-          clearInterval(tick);
-          text.textContent = line;
-          stateEl.textContent = "2 tasks filed";
-          wave.style.opacity = 0.25;
-          fill();
-          result.style.opacity = 1;
-          setTimeout(run, 5200);
-        }, 700);
-      }
-    }, 55);
-  }
-  run();
+  loop();
 })();
 </script>
 </body>
