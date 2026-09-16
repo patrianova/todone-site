@@ -179,16 +179,28 @@ a { color: inherit; text-decoration: none; }
 .bar-mic.live { animation: ring 1.2s ease-out infinite; }
 
 .sheet {
-  position: absolute; left: 10px; right: 10px; bottom: 10px;
-  background: var(--ink); color: #fff; border-radius: 28px; padding: 18px 20px 14px;
-  transform: translateY(120%); transition: transform .45s cubic-bezier(.2,.8,.2,1);
+  position: absolute; inset: 0; border-radius: 38px;
+  background: var(--accent); color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: 58px 22px 26px; text-align: center;
+  transform: translateY(102%); transition: transform .5s cubic-bezier(.2,.8,.2,1);
 }
 .sheet.up { transform: translateY(0); }
-.sheet-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.6); }
-.sheet-head > span:first-child { display: flex; align-items: center; gap: 8px; }
-.sheet-text { font-size: 19px; font-weight: 500; line-height: 1.35; letter-spacing: -0.02em; min-height: 3.9em; margin-top: 12px; text-wrap: pretty; }
-.sheet-text .cursor { color: rgba(255,255,255,0.4); }
-.demo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.sheet-said {
+  font-size: 17px; font-weight: 500; line-height: 1.4; letter-spacing: -0.01em;
+  color: rgba(255,255,255,0.92); min-height: 4.2em; text-wrap: pretty;
+}
+.sheet-said .cursor { color: rgba(255,255,255,0.5); }
+.sheet-mid { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.sheet-state { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 10px; }
+.sheet-time { font-size: 15px; font-weight: 600; opacity: .85; font-variant-numeric: tabular-nums; }
+.sheet-actions { display: flex; gap: 10px; width: 100%; }
+.cap { flex: 1; text-align: center; padding: 13px 0; border-radius: 100px; font-size: 15px; font-weight: 600; }
+.cap.ghost { background: rgba(255,255,255,0.2); color: #fff; }
+.cap.solid { background: #fff; color: var(--accent); }
+.sheet-hint { font-size: 11px; opacity: .8; margin-top: -14px; }
+.sheet.filing .waveform, .sheet.filing .sheet-time, .sheet.filing .sheet-actions, .sheet.filing .sheet-hint { opacity: 0; }
+.sheet .waveform, .sheet .sheet-time, .sheet .sheet-actions, .sheet .sheet-hint { transition: opacity .3s; }
 
 .toast {
   position: absolute; left: 14px; right: 14px; top: 46px;
@@ -199,8 +211,8 @@ a { color: inherit; text-decoration: none; }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast b { color: var(--accent); font-weight: 600; }
 
-.waveform { height: 40px; display: flex; align-items: center; gap: 4px; margin-top: 8px; transition: opacity .3s; }
-.waveform span { width: 3px; border-radius: 100px; background: rgba(255,255,255,0.5); animation: bar 0.55s ease-in-out infinite alternate; }
+.waveform { height: 40px; display: flex; align-items: center; gap: 4px; margin-top: 8px; }
+.waveform span { width: 3px; border-radius: 100px; background: #fff; animation: bar 0.55s ease-in-out infinite alternate; }
 
 @keyframes bar { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

@@ -64,9 +64,15 @@
           <span class="bar-mic" id="mic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span>
         </div>
         <div class="sheet" id="sheet">
-          <div class="sheet-head"><span><span class="demo-dot"></span><span id="sheetState">Listening</span></span><span id="sheetTime">0:00</span></div>
-          <div class="sheet-text" id="sheetText"></div>
-          <div class="waveform" id="wave"></div>
+          <div class="sheet-said" id="sheetText"></div>
+          <div class="sheet-mid">
+            <svg width="34" height="34" viewBox="0 0 100 100"><path d="M20 52 L40 72 L82 24" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="sheet-state" id="sheetState">Listening</div>
+            <div class="sheet-time" id="sheetTime">0:00</div>
+            <div class="waveform" id="wave"></div>
+          </div>
+          <div class="sheet-actions"><span class="cap ghost">Cancel</span><span class="cap solid">Send</span></div>
+          <div class="sheet-hint">Or hold the Action Button again to send</div>
         </div>
       </div>
     </div>
@@ -187,15 +193,15 @@
     mic.classList.add("live");
     await wait(600);
     sheet.classList.add("up"); text.textContent = ""; state.textContent = "Listening";
-    wave.style.opacity = 1; time.textContent = "0:00";
+    time.textContent = "0:00";
     const t0 = Date.now();
     const tick = setInterval(() => { time.textContent = "0:0" + Math.min(9, Math.floor((Date.now() - t0) / 1000)); }, 250);
     for (let i = 1; i <= line.length; i++) { text.innerHTML = line.slice(0, i) + '<span class="cursor">…</span>'; await wait(48); }
     text.textContent = line;
     await wait(500);
-    clearInterval(tick); wave.style.opacity = 0.25; state.textContent = "Thinking";
+    clearInterval(tick); sheet.classList.add("filing"); state.textContent = "Filing what you said…";
     await wait(900);
-    sheet.classList.remove("up"); mic.classList.remove("live");
+    sheet.classList.remove("up"); sheet.classList.remove("filing"); mic.classList.remove("live");
     await wait(350);
     after();
   }
