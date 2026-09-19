@@ -12,6 +12,10 @@
     "trailingSlash": true,
     "rewrites": [
       {
+        "source": "/get/**",
+        "destination": "/get/index.html"
+      },
+      {
         "source": "/v1/**",
         "run": {
           "serviceId": "todone-capture",
@@ -37,18 +41,6 @@
             "value": "public, max-age=300"
           }
         ]
-      }
-    ],
-    "redirects": [
-      {
-        "source": "/get/:ct",
-        "destination": "https://apps.apple.com/us/app/to-did-voice-to-do-list/id6808734717?pt=94799512&ct=:ct&mt=8",
-        "type": 302
-      },
-      {
-        "source": "/get",
-        "destination": "https://apps.apple.com/us/app/to-did-voice-to-do-list/id6808734717?pt=94799512&ct=site&mt=8",
-        "type": 302
       }
     ]
   }
