@@ -241,18 +241,6 @@
   loop();
 })();
 </script>
-<script>
-// A visit that came with ?ref=<source> (Product Hunt adds ref=producthunt) is counted
-// once, anonymously, and the store buttons then go through /get?c=<source>, so that
-// source's taps through to the App Store are counted beside it.
-(function () {
-  var ref = (new URLSearchParams(location.search).get("ref") || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
-  if (!ref) return;
-  try { fetch("/v1/visit?ref=" + ref, { method: "POST", keepalive: true }); } catch (e) {}
-  document.querySelectorAll('a[href^="https://apps.apple.com/app/id6808734717"]').forEach(function (a) {
-    a.href = "/get?c=" + ref;
-  });
-})();
-</script>
+<script src="/visit.js" defer></script>
 </body>
 </html>
