@@ -367,7 +367,22 @@
 </div>
 
 <!-- First, so the tag is configured before the first event is queued. -->
-<script src="/visit.js?v=20261017b"></script>
+<script>
+// First thing on the page, before Analytics or anything else loads: Apple's sign-in
+// returns the session in the URL. It is taken into sessionStorage and removed here, so
+// no later script (gtag reads document.location) and no error report ever sees it. Only
+// a return we started ourselves is accepted (the flag is set before leaving for Apple).
+(function () {
+  var q = new URLSearchParams(location.search), s = q.get("ckSession");
+  if (s === null) return;
+  try {
+    if (sessionStorage.getItem("todidSignin") === "1") sessionStorage.setItem("todidReturnedSession", s);
+    sessionStorage.removeItem("todidSignin");
+  } catch (e) {}
+  history.replaceState(null, "", location.pathname);
+})();
+</script>
+<script src="/visit.js?v=20261017c"></script>
 <script src="./config.js"></script>
 <script>
 const ZONE = { zoneName: "com.apple.coredata.cloudkit.zone" };
@@ -1104,7 +1119,7 @@ function validDue(raw) {
    turned into one CloudKit batch. Every change to one task goes in a single update:
    two updates of the same record in one batch conflict on its change tag. */
 function planActions(agent) {
-  const creates = [], deletes = [], updates = new Map(); let clearing = null;
+  const creates = [], deletes = [], updates = new Map(); let clearing = null, refusedClear = false;
   const upd = (r, f) => { const u = updates.get(r.recordName) || { r, fields: {} }; Object.assign(u.fields, f); updates.set(r.recordName, u); };
   const tagsNow = r => { const f = updates.get(r.recordName)?.fields.CD_tags; return f ? normTags(String(f.value || "").split(",")) : tagsOf(r); };
   // The voice's tag budget (Models.swift `Tag`): one tag per spoken task, one new tag
@@ -1157,16 +1172,18 @@ function planActions(agent) {
         for (const r of records) if (tagsNow(r).includes(name)) upd(r, tagsField(tagsNow(r).filter(t => t !== name)));
       }
     } else if (a.type === "clear_tasks") {
-      // A clear without a scope is refused, not widened to "all".
-      const scope = a.scope;
-      const hit = records.filter(r => scope === "all" || (scope === "done" ? isDone(r) : scope === "open" ? !isDone(r) : false));
+      // Voice clears what is already done, and nothing else, as on the phone: a misheard
+      // "apaga tudo" would otherwise take a real list with it, and five seconds of Undo
+      // is not enough to lean on for that.
+      if (a.scope !== "done") { refusedClear = true; continue; }
+      const hit = records.filter(isDone);
       if (hit.length) clearing = { list: hit, text: `Deleted ${hit.length} task${hit.length === 1 ? "" : "s"}.` };
     }
     // query_tasks: the answer is already in `reply`.
   }
   const ops = [...creates, ...deletes, ...[...updates.values()].map(({ r, fields }) => ({ operationType:"update",
     record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask", fields } }))];
-  return { ops, clearing };
+  return { ops, clearing, refusedClear };
 }
 async function capture(utterance, audioB64) {
   busy = true; lastStep = "capture";
@@ -1209,7 +1226,7 @@ async function capture(utterance, audioB64) {
   if ("transcript" in agent && nothingHeard(agent.transcript)) {
     busy = false; result("nothing_heard"); say("I didn't hear anything — try again?", ""); return;
   }
-  const { ops, clearing } = planActions(agent);
+  const { ops, clearing, refusedClear } = planActions(agent);
   const added = ops.filter(o => o.operationType === "create" && o.record.recordType === "CD_TodoTask").length;
   if (ops.length) {
     // modify() keeps tags apart from tasks and folds the fresh rows in at once:
@@ -1221,6 +1238,7 @@ async function capture(utterance, audioB64) {
   busy = false;
   result(ops.length || clearing ? "filed" : (agent.actions || []).some(a => a.type === "query_tasks") ? "answered" : "nothing_to_do", added);
   if (clearing) deleteRecords(clearing.list, (agent.reply ? agent.reply + " " : "") + clearing.text);
+  else if (refusedClear) say("Voice only clears finished tasks. Use the trash on each one to delete the rest.", "");
   else say(agent.reply || "Filed.", "said");
   refreshQuota();
   // Reconcile with the server once it has caught up — unless an editor or the mic is open by then.
@@ -1359,18 +1377,10 @@ document.addEventListener("keydown", e => {
 (async function boot() {
   track("app_open", { kind: "launch", door: "web" });
   if (!window.TODID_CK_TOKEN) { show("setup"); return; }
-  const params = new URLSearchParams(location.search);
-  let fromURL = params.get("ckSession");
-  if (fromURL) {
-    // Only a sign-in this tab started may hand over a session. Apple sends the token
-    // back in the URL, so a link someone else made with ?ckSession= would otherwise
-    // sign the reader in as the sender; the flag set before leaving tells the two apart.
-    let started = false;
-    try { started = sessionStorage.getItem("todidSignin") === "1"; sessionStorage.removeItem("todidSignin"); } catch {}
-    if (started) { try { localStorage.setItem("ckSession", fromURL); } catch {} }
-    else fromURL = null;
-    history.replaceState(null, "", location.pathname);
-  }
+  // The session Apple sent back, if the script at the top of the page accepted it.
+  let fromURL = null;
+  try { fromURL = sessionStorage.getItem("todidReturnedSession"); sessionStorage.removeItem("todidReturnedSession"); } catch {}
+  if (fromURL) { try { localStorage.setItem("ckSession", fromURL); } catch {} }
   if (session()) {
     const me = await fetch(api("users/current"));
     if (me.status === 200) {
