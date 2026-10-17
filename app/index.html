@@ -103,39 +103,52 @@
 
   /* list ------------------------------------------------------------- */
   .scroll { flex:1; min-height:0; overflow-y:auto; padding:26px 40px 12px; }
-  .bucket { display:flex; align-items:center; gap:10px; padding:22px 0 4px; }
-  .bucket:first-child { padding-top:0; }
-  .bucket .name {
-    font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
-    color:var(--muted);
-  }
-  .bucket .n { font-size:12px; font-weight:600; color:var(--done); }
+  /* The phone's list: section labels in small capitals, each task a white card
+     with a soft halo, the circle on the right, an accent halo when late. */
+  .bucket { display:flex; align-items:center; gap:8px; padding:18px 2px 8px; }
+  .bucket:first-child { padding-top:4px; }
+  .bucket .name { font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
+  .bucket .n { font-size:11px; font-weight:500; color:var(--faint); opacity:.55; }
+  .bucket.today .name, .bucket.today .n { color:var(--body); }
   .bucket.urgent .name, .bucket.urgent .n { color:var(--accent); }
 
   .task {
-    display:flex; align-items:flex-start; gap:16px; padding:14px 0;
-    border-bottom:1px solid var(--rule);
+    display:flex; align-items:center; gap:12px; padding:14px 18px; margin-bottom:10px;
+    background:var(--card); border-radius:14px;
+    box-shadow:0 0 5px rgba(0,0,0,.075), 0 2px 2px rgba(0,0,0,.06);
   }
-  .task:hover { background:#FAFAF9; margin:0 -16px; padding-left:16px; padding-right:16px; border-radius:8px; }
+  .task.overdue { box-shadow:0 0 5px rgba(255,46,119,.16), 0 2px 2px rgba(255,46,119,.12); }
   .check {
-    width:22px; height:22px; border-radius:50%; border:1.5px solid var(--stroke);
-    flex:none; margin-top:1px; cursor:pointer; background:none; position:relative; padding:0;
+    width:20px; height:20px; border-radius:50%; border:2px solid var(--stroke);
+    flex:none; cursor:pointer; background:none; position:relative; padding:0;
+    transition: background-color .12s ease, border-color .12s ease, transform .12s ease;
   }
+  .check::before { content:""; position:absolute; inset:-12px; }  /* 44px to aim at */
   .check:hover { border-color: var(--accent); }
-  .check { transition: background-color .12s ease, border-color .12s ease, transform .12s ease; }
   .check:active { transform: scale(.88); }
-  .task.overdue .check { border-color:var(--accent); }
   .task.is-done .check { background:var(--accent); border-color:var(--accent); }
   .task.is-done .check::after {
-    content:"✓"; color:#fff; font-size:12px; font-weight:800;
+    content:"✓"; color:#fff; font-size:11px; font-weight:800;
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   }
   .task .body { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
-  .task .title { font-size:16px; line-height:1.4; word-break:break-word; }
+  .task .tag { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); }
+  .task .title { font-size:17px; font-weight:500; letter-spacing:-.01em; line-height:1.28; word-break:break-word; }
   .task.is-done .title { color:var(--done); text-decoration:line-through; }
-  .task .meta { font-size:13px; color:var(--faint); }
-  .task.overdue .meta { color:var(--accent); font-weight:500; }
-  .task .rep { font-size:12px; color:var(--faint); }
+  .task .meta { font-size:13px; color:var(--muted); display:flex; gap:8px; white-space:nowrap; overflow:hidden; }
+  .task.overdue .meta .when { color:var(--accent); font-weight:600; }
+
+  .chips { display:flex; gap:8px; overflow-x:auto; padding:14px 40px 2px; flex:none; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip {
+    flex:none; display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:100px;
+    border:none; background:var(--hair); color:var(--body); font:inherit; font-size:14px; font-weight:500; cursor:pointer;
+  }
+  .chip .n { font-size:12px; color:var(--faint); }
+  .chip.on { background:var(--ink); color:#fff; }
+  .chip.on .n { color:rgba(255,255,255,.6); }
+  .chip .x { margin-left:2px; color:inherit; opacity:.5; }
+  .chip .x:hover { opacity:1; }
   .editor .erow select, .editor .erow input[type=number] { font:inherit; }
   .wd { display:flex; gap:4px; }
   .wd button { width:28px; height:28px; border-radius:50%; border:1px solid var(--faint); background:transparent; color:inherit; font-size:11px; font-weight:600; cursor:pointer; }
@@ -201,11 +214,10 @@
   }
   .status .tick { color:var(--accent); flex:none; line-height:0; }
   .bars { display:flex; align-items:center; gap:3px; height:20px; flex:none; }
-  .bars span { width:3px; border-radius:100px; background:var(--accent);
-               animation:bar .5s ease-in-out infinite alternate; }
+  /* The phone's meter: one bar per reading, scrolling, so pauses between words show. */
+  .bars span { width:3px; height:4px; border-radius:100px; background:var(--accent); transition:height .1s linear; }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.25; } }
   @keyframes spin { to { transform:rotate(360deg); } }
-  @keyframes bar { from { transform:scaleY(.3); } to { transform:scaleY(1); } }
   #micBtn.recording { background:var(--ink); animation:none; }
   #micBtn.recording::after {
     content:""; position:absolute; inset:-5px; border-radius:50%;
@@ -213,7 +225,8 @@
   }
   #micBtn { position:relative; }
   @media (prefers-reduced-motion: reduce) {
-    .status .dot, .status .spin, .bars span, #micBtn.recording::after { animation:none; }
+    .status .dot, .status .spin, #micBtn.recording::after { animation:none; }
+    .bars span { transition:none; }
   }
 
   /* gates ------------------------------------------------------------ */
@@ -244,6 +257,7 @@
     .composer { padding:14px 20px 20px; gap:10px; }
     .circlebtn { width:48px; height:48px; }
     .status { margin:0 20px 12px; }
+    .chips { padding:12px 20px 2px; }
     #menuBtn { display:flex !important; }
   }
 </style>
@@ -300,6 +314,7 @@
         </div>
       </div>
 
+      <div class="chips hidden" id="chips"></div>
       <div class="scroll"><div id="buckets"></div></div>
 
       <div class="status" id="status" role="status" aria-live="polite"></div>
@@ -351,10 +366,7 @@ function say(text, kind, hint, onHint) {
     kind === "live" ? '<span class="dot"></span>' :
     kind === "busy" ? '<span class="spin"></span>' :
     kind === "said" ? '<span class="tick"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : "";
-  const bars = kind === "live"
-    ? '<span class="bars">' + [12,20,15,18,10].map((h,i) =>
-        `<span style="height:${h}px;animation-duration:${0.38 + i * 0.06}s"></span>`).join("") + "</span>"
-    : "";
+  const bars = kind === "live" ? '<span class="bars">' + "<span></span>".repeat(18) + "</span>" : "";
   el.innerHTML = `${lead}<span class="text"></span>${bars}`;
   const t = el.querySelector(".text");
   t.textContent = text;
@@ -411,6 +423,26 @@ function isDone(r) { return !!(r.fields.CD_completedAt && r.fields.CD_completedA
 function dueOf(r) { return r.fields.CD_dueAt && r.fields.CD_dueAt.value; }
 function titleOf(r) { return (r.fields.CD_title && r.fields.CD_title.value) || "(untitled)"; }
 function fieldOf(r, k) { const f = r.fields[k]; return f && f.value != null ? f.value : null; }
+// Tags, by the apps' rules (Models.swift `Tag`): lowercase, no "#", commas dropped,
+// spaces collapsed, at most 24 characters, sorted, at most three per task.
+function normTags(raw) {
+  const out = [];
+  for (const item of raw) {
+    let s = String(item || "").toLowerCase().replace(/^#+/, "").replace(/,/g, " ").split(/\s+/).filter(Boolean).join(" ");
+    if (s.length > 24) s = s.slice(0, 24).trim();
+    if (s && !out.includes(s)) out.push(s);
+  }
+  return out.sort().slice(0, 3);
+}
+function mergeTags(existing, adding) {
+  const ordered = [];
+  for (const t of [...existing, ...adding]) { const c = normTags([t])[0]; if (c && !ordered.includes(c)) ordered.push(c); }
+  return normTags(ordered.slice(0, 3));
+}
+function tagsOf(r) { return normTags(String(fieldOf(r, "CD_tags") || "").split(",")); }
+function tagsField(list) { const t = normTags(list); return { CD_tags: { value: t.length ? t.join(",") : null } }; }
+// Search ignores case and accents, as the phone does: "cafe" finds "café".
+const fold = s => String(s).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 // Recurrence, the same small vocabulary the apps use: every N days/weeks/months/years,
 // weekly optionally on several ISO weekdays (Mon=1 … Sun=7).
 function ruleOf(r) {
@@ -450,35 +482,58 @@ function nextAfterNow(rule, dueMs) {
   return null;
 }
 const WD = ["M","T","W","T","F","S","S"];
+const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+// The phone's short token next to the repeat icon (Theme.swift `shortToken`).
 function ruleLabel(rule) {
-  const n = rule.interval, f = rule.frequency;
-  let s = n === 1 ? { daily:"Every day", weekly:"Every week", monthly:"Every month", yearly:"Every year" }[f]
-                  : `Every ${n} ${ { daily:"days", weekly:"weeks", monthly:"months", yearly:"years" }[f] }`;
-  if (f === "weekly" && rule.weekdays.length) {
-    const names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-    s += " · " + rule.weekdays.map(i => names[i - 1]).join(", ");
+  const { frequency: f, interval: n, weekdays: w } = rule;
+  if (f === "weekly" && n === 1 && w.length) {
+    if (w.join() === "1,2,3,4,5") return "Weekdays";
+    if (w.length === 1) return DAY_NAMES[w[0] - 1].slice(0, 3);
+    return `${w.length}×/wk`;
   }
-  return s;
+  if (n !== 1) return `Every ${n}`;
+  return { daily:"Daily", weekly:"Weekly", monthly:"Monthly", yearly:"Yearly" }[f];
 }
 
+// The week the phone means: it starts on the locale's first day (Sunday in the US),
+// so a Sunday task lands in the same group on both.
+function weekStart(d) {
+  let first = 7;
+  try { const wi = new Intl.Locale(navigator.language); first = (wi.getWeekInfo ? wi.getWeekInfo() : wi.weekInfo)?.firstDay || 7; } catch {}
+  const s = new Date(d); s.setHours(0,0,0,0);
+  s.setDate(s.getDate() - ((isoWeekday(s) - first + 7) % 7));
+  return s.getTime();
+}
+function nextWeekStart(now) { const s = new Date(weekStart(now)); s.setDate(s.getDate() + 7); return s.getTime(); }
+// Overdue first, today, tomorrow, each weekday left in this week, later, no date —
+// the groups and order of ContentView.slot().
 function bucketOf(r) {
   const due = dueOf(r);
-  if (!due) return "No date";
+  if (!due) return { rank: 99, name: "No date" };
   const d = new Date(due), now = new Date();
-  if (d < now) return "Overdue";
+  if (due < now.getTime()) return { rank: 0, name: "Overdue", tone: "urgent" };
   const today = new Date(now); today.setHours(0,0,0,0);
-  const days = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  // The week that is running, not seven rolling days: on a Thursday, next
-  // Wednesday belongs to next week. mondayOf() gives the week's own start.
-  return d.getTime() < mondayOf(today) + 604800000 ? "This week" : "Later";
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 86400000);
+  if (days === 0) return { rank: 1, name: "Today", tone: "today" };
+  if (days === 1) return { rank: 2, name: "Tomorrow" };
+  if (due < nextWeekStart(now)) return { rank: 2 + days, name: DAY_NAMES[isoWeekday(d) - 1] };
+  return { rank: 98, name: "Later" };
 }
-function dueLabel(r) {
-  const due = dueOf(r);
-  if (!due) return "";
-  return new Date(due).toLocaleString(undefined,
-    { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
+// "8:00 AM · Mon · 12 Oct", and "12 Oct 27" once it is not this year (DueFormat.meta).
+function dueLabel(ms) {
+  const d = new Date(ms), en = "en-US";
+  const time = d.toLocaleTimeString(en, { hour:"numeric", minute:"2-digit" });
+  const wd = d.toLocaleDateString(en, { weekday:"short" });
+  let day = `${d.getDate()} ${d.toLocaleDateString(en, { month:"short" })}`;
+  if (d.getFullYear() !== new Date().getFullYear()) day += " " + String(d.getFullYear()).slice(-2);
+  return `${time} · ${wd} · ${day}`;
+}
+// Dated before undated; soonest first; undated newest first (DataStore.relevanceOrder).
+function relevance(a, b) {
+  const x = dueOf(a), y = dueOf(b);
+  if (x && y) return x - y;
+  if (x || y) return x ? -1 : 1;
+  return (fieldOf(b, "CD_createdAt") || 0) - (fieldOf(a, "CD_createdAt") || 0);
 }
 
 function render() {
@@ -493,8 +548,10 @@ function render() {
     ? `${open.length} open${overdue ? ` · ${overdue} overdue` : ""}`
     : `${done.length} completed`;
 
-  const q = query.trim().toLowerCase();
-  const match = r => !q || titleOf(r).toLowerCase().includes(q);
+  renderChips(open);
+  const q = fold(query.trim());
+  const match = r => (!selectedTag || tagsOf(r).includes(selectedTag)) &&
+                     (!q || fold(titleOf(r)).includes(q) || tagsOf(r).some(t => fold(t).includes(q)));
   const host = $("buckets");
   host.innerHTML = "";
 
@@ -506,23 +563,55 @@ function render() {
     return;
   }
 
-  const groups = {};
-  for (const r of open.filter(match)) (groups[bucketOf(r)] ??= []).push(r);
-  const order = ["Overdue","Today","Tomorrow","This week","Later","No date"];
-  let any = false;
-  for (const name of order) {
-    const items = (groups[name] || []).sort((a,b) => (dueOf(a) ?? 9e15) - (dueOf(b) ?? 9e15));
-    if (!items.length) continue;
-    any = true;
-    const h = document.createElement("div");
-    h.className = "bucket" + (name === "Overdue" ? " urgent" : "");
-    h.innerHTML = `<span class="name"></span><span class="n">${items.length}</span>`;
-    h.querySelector(".name").textContent = name;
-    host.appendChild(h);
-    for (const r of items) host.appendChild(row(r));
+  const groups = new Map();
+  for (const r of open.filter(match).sort(relevance)) {
+    const b = bucketOf(r);
+    if (!groups.has(b.name)) groups.set(b.name, { ...b, items: [] });
+    groups.get(b.name).items.push(r);
   }
-  if (!any) emptyState(q ? "Nothing matches" : "Nothing to do",
-                       q ? "Try another word." : "Say something below and it lands here, dated.");
+  for (const g of [...groups.values()].sort((a, b) => a.rank - b.rank)) {
+    const h = document.createElement("div");
+    h.className = "bucket" + (g.tone ? " " + g.tone : "");
+    h.innerHTML = `<span class="name"></span><span class="n">${g.items.length}</span>`;
+    h.querySelector(".name").textContent = g.name;
+    host.appendChild(h);
+    for (const r of g.items) host.appendChild(row(r));
+  }
+  if (!groups.size) emptyState(q || selectedTag ? "Nothing matches" : "Nothing to do",
+                               q || selectedTag ? "Try another word, or All." : "Click the microphone below and say, for example: “Call mom tomorrow at 6”");
+}
+
+/* Tag chips over the list, as on the phone: All, then every tag in use with how many
+   open tasks carry it, most used first; a click filters, × removes the tag everywhere. */
+let selectedTag = null;
+function tagCounts(open) {
+  const counts = new Map(declaredTags().map(t => [t, 0]));
+  for (const r of open) for (const t of tagsOf(r)) counts.set(t, (counts.get(t) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+function renderChips(open) {
+  const host = $("chips"), counts = tagCounts(open);
+  if (selectedTag && !counts.some(([t]) => t === selectedTag)) selectedTag = null;
+  host.replaceChildren();
+  host.classList.toggle("hidden", view !== "open" || !records.length);
+  const chip = (label, n, on, onclick) => {
+    const b = document.createElement("button");
+    b.className = "chip" + (on ? " on" : ""); b.type = "button"; b.onclick = onclick;
+    b.append(label);
+    if (n) { const s = document.createElement("span"); s.className = "n"; s.textContent = n; b.append(s); }
+    host.append(b); return b;
+  };
+  if (counts.length) chip("All", 0, !selectedTag, () => { selectedTag = null; render(); });
+  for (const [t, n] of counts) {
+    const b = chip(t, n, selectedTag === t, () => { selectedTag = selectedTag === t ? null : t; render(); });
+    const x = document.createElement("span"); x.className = "x"; x.textContent = "×"; x.title = `Remove the tag ${t}`;
+    x.onclick = e => { e.stopPropagation(); removeTag(t); };
+    b.append(x);
+  }
+  chip(counts.length ? "+" : "+ Tag", 0, false, () => {
+    const name = normTags([prompt("New tag") || ""])[0];
+    if (name) declareTags([name]);
+  }).title = "New tag";
 }
 
 function emptyState(title, sub) {
@@ -540,7 +629,6 @@ function row(r) {
   const overdue = !done && dueOf(r) && dueOf(r) < Date.now();
   el.className = "task" + (done ? " is-done" : "") + (overdue ? " overdue" : "");
   el.innerHTML = `
-    <button class="check" title="${done ? "Reopen" : "Complete"}"></button>
     <div class="body"><div class="title"></div></div>
     <div class="actions">
       <button class="edit" title="Edit">
@@ -549,21 +637,22 @@ function row(r) {
       <button class="del" title="Delete">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
       </button>
-    </div>`;
+    </div>
+    <button class="check" title="${done ? "Reopen" : "Complete"}"></button>`;
   el.querySelector(".title").textContent = titleOf(r);
-  const label = dueLabel(r);
-  if (label && !done) {
+  const body = el.querySelector(".body"), tags = tagsOf(r), rule = ruleOf(r);
+  // Only the first tag is spelled out; the rest are a count, as on the phone.
+  if (!done && tags.length) {
+    const t = document.createElement("div");
+    t.className = "tag"; t.textContent = tags[0] + (tags.length > 1 ? ` +${tags.length - 1}` : "");
+    body.prepend(t);
+  }
+  if (!done && (dueOf(r) || rule)) {
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = label;
-    el.querySelector(".body").appendChild(meta);
-  }
-  const rule = ruleOf(r);
-  if (rule && !done) {
-    const rep = document.createElement("div");
-    rep.className = "rep";
-    rep.textContent = "\u21bb " + ruleLabel(rule);
-    el.querySelector(".body").appendChild(rep);
+    if (dueOf(r)) { const w = document.createElement("span"); w.className = "when"; w.textContent = dueLabel(dueOf(r)); meta.append(w); }
+    if (rule) { const p = document.createElement("span"); p.textContent = "\u21bb " + ruleLabel(rule); meta.append(p); }
+    body.appendChild(meta);
   }
   el.querySelector(".check").onclick = () => toggle(r, !done);
   el.querySelector(".del").onclick = () => del(r);
@@ -594,9 +683,22 @@ function showUpgrade() {
   $("upgrade").classList.remove("hidden");
 }
 
+/* Every record of a type, page by page: one page of 200 left a long list cut short. */
+async function queryAll(recordType) {
+  const all = []; let marker;
+  do {
+    const q = await post("records/query", { zoneID: ZONE, query: { recordType }, resultsLimit: 200,
+                                            ...(marker ? { continuationMarker: marker } : {}) });
+    if (q.status !== 200) return q;
+    all.push(...(q.json.records || []));
+    marker = q.json.continuationMarker;
+  } while (marker);
+  return { status: 200, records: all };
+}
+let tagRecords = [];
+function declaredTags() { return [...new Set(tagRecords.map(r => normTags([fieldOf(r, "CD_name")])[0]).filter(Boolean))]; }
 async function refresh() {
-  const q = await post("records/query",
-    { zoneID: ZONE, query: { recordType: "CD_TodoTask" }, resultsLimit: 200 });
+  const q = await queryAll("CD_TodoTask");
   if (q.status !== 200 && zoneMissing(q.json)) {
     // First time this iCloud account has ever seen To-did.
     await ensureZone();
@@ -612,8 +714,56 @@ async function refresh() {
     }
     return;
   }
-  records = q.json.records || [];
+  // A tag no device ever declared is a type CloudKit has not met: no rows, not an error.
+  const t = await queryAll("CD_TagDefinition");
+  if (t.status === 200) tagRecords = t.records;
+  // Rows deleted a moment ago stay gone while Undo is still on offer.
+  const leaving = new Set(pendingDelete ? pendingDelete.list.map(r => r.recordName) : []);
+  records = q.records.filter(r => !leaving.has(r.recordName));
   render();
+}
+
+/* Writes a batch and keeps the fresh change tags, or the next edit of these rows is
+   refused as a conflict. Returns false when CloudKit said no. */
+async function modify(ops) {
+  let w = await post("records/modify", { zoneID: ZONE, operations: ops });
+  if (w.status !== 200 && zoneMissing(w.json)) { await ensureZone(); w = await post("records/modify", { zoneID: ZONE, operations: ops }); }
+  if (w.status !== 200) { say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
+  for (const fresh of (w.json.records || [])) {
+    if (!fresh.recordName) continue;
+    const list = fresh.recordType === "CD_TagDefinition" ? tagRecords : records;
+    const i = list.findIndex(x => x.recordName === fresh.recordName);
+    if (fresh.deleted) { if (i >= 0) list.splice(i, 1); }
+    else if (i >= 0) list[i] = fresh;
+    else if (fresh.fields) list.push(fresh);
+  }
+  return true;
+}
+function retagOp(r, tags) {
+  return { operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
+           recordType:"CD_TodoTask", fields: tagsField(tags) } };
+}
+function declareOps(names) {
+  const have = new Set(declaredTags());
+  return normTags(names).filter(n => !have.has(n)).map(n => ({ operationType:"create", record:{ recordType:"CD_TagDefinition",
+    fields:{ CD_id:{ value: crypto.randomUUID().toUpperCase() }, CD_name:{ value:n }, CD_createdAt:{ value: Date.now() },
+             CD_entityName:{ value:"TagDefinition" } } } }));
+}
+// Removing a tag takes it off every task and drops its declarations (DataStore.deleteTag).
+function removeTagOps(name) {
+  return [
+    ...tagRecords.filter(r => normTags([fieldOf(r, "CD_name")])[0] === name)
+                 .map(r => ({ operationType:"forceDelete", record:{ recordName:r.recordName } })),
+    ...records.filter(r => tagsOf(r).includes(name)).map(r => retagOp(r, tagsOf(r).filter(t => t !== name))),
+  ];
+}
+async function declareTags(names) {
+  const ops = declareOps(names);
+  if (ops.length && await modify(ops)) render();
+}
+async function removeTag(name) {
+  if (!confirm(`Remove the tag ${name} from every task?\nThe tasks stay. Only the tag goes.`)) return;
+  if (await modify(removeTagOps(name))) { if (selectedTag === name) selectedTag = null; render(); }
 }
 /* Optimistic: the row flips now and the write happens behind it. Waiting for the
    round trip (and then a re-query) made every check feel broken. */
@@ -637,7 +787,7 @@ async function toggle(r, complete) {
         CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
         CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: now }, CD_dueAt:{ value: next },
         CD_sourceUtterance:{ value: fieldOf(r, "CD_sourceUtterance") || "" },
-        ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: myID } } } });
+        ...tagsField(tagsOf(r)), ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: myID } } } });
     }
   } else if (!complete && rule) {
     // Reopening takes back the copy it generated, so the series is not on the list twice.
@@ -713,11 +863,16 @@ function edit(r, rowEl) {
       <span class="wd"></span>
     </div>
     <div class="erow">
+      <label>Tags <input class="etags edue" type="text" placeholder="home, work" autocomplete="off" style="width:16em"></label>
+    </div>
+    <div class="erow">
       <button type="submit" class="esave">Save</button>
       <button type="button" class="ecancel">Cancel</button>
     </div>`;
   const title = form.querySelector(".etitle"), has = form.querySelector(".ehas"), when = form.querySelector(".edue");
   title.value = titleOf(r);
+  const tagsInput = form.querySelector(".etags");
+  tagsInput.value = tagsOf(r).join(", ");
   has.checked = !!due;
   when.value = toLocalInput(due || defaultDue());
   when.disabled = !due;
@@ -751,7 +906,7 @@ function edit(r, rowEl) {
       ? { frequency: freq.value, interval: Math.min(99, Math.max(1, Number(interval.value) || 1)),
           weekdays: freq.value === "weekly" ? [...days].sort() : [] }
       : null;
-    await save(r, next, nextDue, rule);
+    await save(r, next, nextDue, rule, normTags(tagsInput.value.split(/[,\n]/)));
   };
   body.replaceChildren(form);
   title.focus(); title.select();
@@ -761,27 +916,16 @@ function toLocalInput(ms) {
   const d = new Date(ms), pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-async function save(r, title, dueMs, rule) {
-  const before = { title: r.fields.CD_title, due: r.fields.CD_dueAt, rep: ruleOf(r) };
-  const repFields = ruleFields(rule || null);
-  r.fields.CD_title = { value: title };
-  r.fields.CD_dueAt = dueMs === null ? { value: null } : { value: dueMs };
-  Object.assign(r.fields, repFields);
+async function save(r, title, dueMs, rule, tags) {
+  const before = { ...r.fields };
+  const fields = { CD_title: { value: title }, CD_dueAt: { value: dueMs }, ...ruleFields(rule || null), ...tagsField(tags) };
+  Object.assign(r.fields, fields);
   render();
-  const resp = await post("records/modify", { zoneID: ZONE, operations: [{ operationType:"update",
-    record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
-              fields: { CD_title: { value: title }, CD_dueAt: dueMs === null ? { value: null } : { value: dueMs }, ...repFields } } }] });
-  if (resp.status === 200) {
-    const fresh = (resp.json.records || [])[0];
-    if (fresh) {
-      const i = records.findIndex(x => x.recordName === fresh.recordName);
-      if (i >= 0) { records[i] = fresh; render(); }
-    }
-    say("Saved.", "said");
-  } else {
-    r.fields.CD_title = before.title; r.fields.CD_dueAt = before.due; Object.assign(r.fields, ruleFields(before.rep)); render();
-    say("Couldn't save that — " + (resp.json.reason || resp.status));
-  }
+  const ok = await modify([{ operationType:"update",
+    record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask", fields } }]);
+  if (!ok) r.fields = before;
+  render();
+  if (ok) say("Saved.", "said");
 }
 
 /* ---- capture through the model (same proxy the apps use) ------------ */
@@ -814,10 +958,110 @@ function contextBlock(utterance) {
   open.forEach((r, i) => {
     const sid = "T" + (i + 1); idMap[sid] = r;
     const due = dueOf(r) ? new Date(dueOf(r)).toISOString() : "none";
-    lines.push(`${sid} | ${titleOf(r)} | due: ${due}`);
+    const tags = tagsOf(r);
+    lines.push(`${sid} | ${titleOf(r)} | due: ${due} | tags: ${tags.length ? tags.join(",") : "none"}`);
   });
+  const vocab = vocabulary();
+  lines.push("TAGS_IN_USE: " + (vocab.length ? vocab.join(", ") : "(none)"));
   lines.push("UTTERANCE:", utterance);
   return lines.join("\n");
+}
+// The tags the model may draw from: declared, on open tasks, and on tasks finished in
+// the last 60 days, so "shopping" does not come back next week as "groceries".
+function vocabulary() {
+  const since = Date.now() - 60 * 86400000, out = new Set(declaredTags());
+  for (const r of records) if (!isDone(r) || fieldOf(r, "CD_completedAt") >= since) tagsOf(r).forEach(t => out.add(t));
+  return [...out].sort();
+}
+// No real words: empty, or a lone filler. "Milk" is a capture, and so is 买菜 (CaptureService.nothingHeard).
+const FILLERS = new Set(["hm","hmm","hmmm","mm","mmm","uh","uhm","um","umm","ah","eh","er","erm","hum","huh","oh","é","ã","ahn","hã","hein"]);
+function nothingHeard(transcript) {
+  const letters = String(transcript || "").replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+  return !letters || FILLERS.has(letters);
+}
+// A date that is gone already, within 30 s, or over a year out is a parse error: the
+// task is kept, only the reminder is dropped (CaptureService.validDueDate).
+function validDue(raw) {
+  const t = raw ? Date.parse(raw) : NaN;
+  return !isNaN(t) && t > Date.now() + 30000 && t <= Date.now() + 366 * 86400000 ? t : null;
+}
+/* What the model asked for, held to the phone's rules (CaptureService.prepare) and
+   turned into one CloudKit batch. Every change to one task goes in a single update:
+   two updates of the same record in one batch conflict on its change tag. */
+function planActions(agent) {
+  const creates = [], deletes = [], updates = new Map(); let clearing = null;
+  const upd = (r, f) => { const u = updates.get(r.recordName) || { r, fields: {} }; Object.assign(u.fields, f); updates.set(r.recordName, u); };
+  const tagsNow = r => { const f = updates.get(r.recordName)?.fields.CD_tags; return f ? normTags(String(f.value || "").split(",")) : tagsOf(r); };
+  // The voice's tag budget (Models.swift `Tag`): one tag per spoken task, one new tag
+  // per capture, none new once six are in use. Tags said out loud are exempt.
+  const known = new Set(vocabulary()), accepted = new Set(); let minted = 0;
+  for (const a of (agent.actions || []).slice(0, 10)) {
+    const named = [...new Set((a.tags || []).map(t => normTags([t])[0]).filter(Boolean))];
+    const targets = (a.target_task_ids || []).map(id => idMap[id]).filter(Boolean);
+    const title = String(a.title || "").trim().slice(0, 200);
+    if (a.type === "add_task" && title) {
+      const fields = { CD_title:{ value:title }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+                       CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() } };
+      const t = validDue(a.due_at);
+      if (t !== null) fields.CD_dueAt = { value: t };
+      const guess = (a.tags || []).map(x => normTags([x])[0]).find(Boolean);
+      if (guess && (known.has(guess) || accepted.has(guess))) fields.CD_tags = { value: guess };
+      else if (guess && known.size + minted < 6 && minted < 1) { fields.CD_tags = { value: guess }; accepted.add(guess); minted++; }
+      if (t !== null && ["daily","weekly","monthly","yearly"].includes(a.recurrence_frequency)) {
+        const wd = (a.recurrence_weekdays || []).filter(n => n >= 1 && n <= 7);
+        Object.assign(fields, ruleFields({ frequency: a.recurrence_frequency,
+          interval: Math.min(99, Math.max(1, Number(a.recurrence_interval) || 1)),
+          weekdays: a.recurrence_frequency === "weekly" ? (wd.length ? [...new Set(wd)].sort() : [isoWeekday(new Date(t))]) : [] }));
+      }
+      creates.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields } });
+    } else if (a.type === "complete_task") {
+      for (const r of targets) {
+        const fields = { CD_completedAt:{ value: Date.now() } };
+        const rule = ruleOf(r), due = dueOf(r);
+        if (rule && due) {
+          const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || fieldOf(r, "CD_id");
+          const next = nextAfterNow(rule, due);
+          if (next !== null) {
+            fields.CD_recurrenceSeriesID = { value: seriesID };
+            creates.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
+              CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+              CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() }, CD_dueAt:{ value: next },
+              ...tagsField(tagsOf(r)), ...ruleFields(rule),
+              CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: fieldOf(r, "CD_id") } } } });
+          }
+        }
+        upd(r, fields);
+      }
+    } else if (a.type === "reschedule_task") {
+      // A reschedule to nowhere is a mishearing: applying it would erase the date.
+      const t = validDue(a.due_at);
+      if (t !== null) for (const r of targets) upd(r, { CD_dueAt:{ value: t } });
+    } else if ((a.type === "tag_tasks" || a.type === "untag_tasks") && named.length) {
+      for (const r of targets) {
+        const now = tagsNow(r);
+        upd(r, tagsField(a.type === "tag_tasks" ? mergeTags(now, named) : now.filter(t => !named.includes(t))));
+      }
+    } else if (a.type === "create_tags" && named.length) {
+      const fresh = named.filter(n => !accepted.has(n));
+      creates.push(...declareOps(fresh));
+      fresh.forEach(n => accepted.add(n));
+    } else if (a.type === "delete_tags" && named.length) {
+      for (const name of named) {
+        for (const r of tagRecords) if (normTags([fieldOf(r, "CD_name")])[0] === name)
+          deletes.push({ operationType:"forceDelete", record:{ recordName:r.recordName } });
+        for (const r of records) if (tagsNow(r).includes(name)) upd(r, tagsField(tagsNow(r).filter(t => t !== name)));
+      }
+    } else if (a.type === "clear_tasks") {
+      // A clear without a scope is refused, not widened to "all".
+      const scope = a.scope;
+      const hit = records.filter(r => scope === "all" || (scope === "done" ? isDone(r) : scope === "open" ? !isDone(r) : false));
+      if (hit.length) clearing = { list: hit, text: `Deleted ${hit.length} task${hit.length === 1 ? "" : "s"}.` };
+    }
+    // query_tasks: the answer is already in `reply`.
+  }
+  const ops = [...creates, ...deletes, ...[...updates.values()].map(({ r, fields }) => ({ operationType:"update",
+    record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask", fields } }))];
+  return { ops, clearing };
 }
 async function capture(utterance, audioB64) {
   busy = true;
@@ -851,70 +1095,15 @@ async function capture(utterance, audioB64) {
   catch { busy = false; say("I couldn't read the reply. Nothing was filed."); return; }
   // The model writes what it heard before it acts. No words → nothing is filed,
   // whatever it put in `actions` (silence used to come back as "buy onions").
-  if ("transcript" in agent) {
-    const words = String(agent.transcript || "").split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w));
-    if (words.length < 2) { busy = false; say("I didn't hear anything — try again?", ""); return; }
+  if ("transcript" in agent && nothingHeard(agent.transcript)) {
+    busy = false; say("I didn't hear anything — try again?", ""); return;
   }
-
-  const ops = []; let clearing = null;
-  for (const a of (agent.actions || [])) {
-    if (a.type === "add_task" && a.title) {
-      const fields = { CD_title:{ value:a.title }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
-                       CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() } };
-      const t = a.due_at ? Date.parse(a.due_at) : NaN;
-      if (!isNaN(t)) fields.CD_dueAt = { value: t };
-      if (!isNaN(t) && ["daily","weekly","monthly","yearly"].includes(a.recurrence_frequency)) {
-        const wd = (a.recurrence_weekdays || []).filter(n => n >= 1 && n <= 7);
-        Object.assign(fields, ruleFields({ frequency: a.recurrence_frequency,
-          interval: Math.min(99, Math.max(1, Number(a.recurrence_interval) || 1)),
-          weekdays: a.recurrence_frequency === "weekly" ? (wd.length ? [...new Set(wd)].sort() : [isoWeekday(new Date(t))]) : [] }));
-      }
-      ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields } });
-    } else if (a.type === "complete_task") {
-      for (const sid of (a.target_task_ids || [])) {
-        const r = idMap[sid]; if (!r) continue;
-        const fields = { CD_completedAt:{ value: Date.now() } };
-        ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
-          recordType:"CD_TodoTask", fields } });
-        const rule = ruleOf(r), due = dueOf(r);
-        if (rule && due) {
-          const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || fieldOf(r, "CD_id");
-          const next = nextAfterNow(rule, due);
-          if (next !== null) {
-            fields.CD_recurrenceSeriesID = { value: seriesID };
-            ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
-              CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
-              CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() }, CD_dueAt:{ value: next },
-              ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: fieldOf(r, "CD_id") } } } });
-          }
-        }
-      }
-    } else if (a.type === "clear_tasks") {
-      const scope = a.scope;
-      const hit = records.filter(r => scope === "all" || (scope === "done" ? isDone(r) : scope === "open" ? !isDone(r) : false));
-      if (hit.length) clearing = { list: hit, text: `Deleted ${hit.length} task${hit.length === 1 ? "" : "s"}.` };
-    } else if (a.type === "reschedule_task") {
-      const t = a.due_at ? Date.parse(a.due_at) : NaN;
-      for (const sid of (a.target_task_ids || [])) {
-        const r = idMap[sid]; if (!r) continue;
-        ops.push({ operationType:"update", record:{ recordName:r.recordName, recordChangeTag:r.recordChangeTag,
-          recordType:"CD_TodoTask", fields:{ CD_dueAt: isNaN(t) ? { value:null } : { value:t } } } });
-      }
-    }
-  }
+  const { ops, clearing } = planActions(agent);
   if (ops.length) {
-    let w = await post("records/modify", { zoneID: ZONE, operations: ops });
-    if (w.status !== 200 && zoneMissing(w.json)) {
-      await ensureZone();
-      w = await post("records/modify", { zoneID: ZONE, operations: ops });
-    }
-    if (w.status !== 200) { busy = false; say("Nothing was saved — " + (w.json.reason || w.status)); return; }
-    // Show the new tasks immediately: CloudKit queries are eventually consistent,
-    // so waiting on a re-query is what made captures look like they vanished.
-    for (const rec of (w.json.records || [])) {
-      if (rec.recordName && !records.some(r => r.recordName === rec.recordName)) records.push(rec);
-      else if (rec.recordName) records = records.map(r => r.recordName === rec.recordName ? rec : r);
-    }
+    // modify() keeps tags apart from tasks and folds the fresh rows in at once:
+    // CloudKit queries are eventually consistent, so waiting on a re-query made
+    // captures look like they vanished.
+    if (!await modify(ops)) { busy = false; return; }
     render();
   }
   busy = false;
@@ -966,18 +1155,26 @@ async function micToggle() {
     const src = ctx.createMediaStreamSource(stream);
     const node = ctx.createScriptProcessor(4096, 1, 1);
     const chunks = [];
-    node.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    const levels = Array(18).fill(0.05);
+    node.onaudioprocess = e => {
+      const data = new Float32Array(e.inputBuffer.getChannelData(0));
+      chunks.push(data);
+      // SpeechCapture.rms: RMS in dBFS, -50 dB silent to 0 dB full, then stretched ×2.2.
+      let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      const db = 20 * Math.log10(Math.max(Math.sqrt(sum / data.length), 1e-7));
+      levels.shift(); levels.push(Math.max(0.05, Math.min(1, (db + 50) / 50)));
+      $("status").querySelectorAll(".bars span").forEach((b, i) => { b.style.height = (4 + Math.min(1, levels[i] * 2.2) * 16) + "px"; });
+    };
     src.connect(node); node.connect(ctx.destination);
     rec = { ctx, node, stream, chunks, rate: ctx.sampleRate };
     btn.classList.add("recording"); btn.innerHTML = MIC_STOP_ICON;
     const t0 = Date.now();
-    const tickText = () => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      const clock = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-      say(`Listening — ${clock}`, "live", "Say it in any language. Click the stop button when you're done.");
-    };
-    tickText();
-    recTimer = setInterval(tickText, 500);
+    say("Listening — 0:00", "live", "Say it in any language. Click the stop button when you're done.");
+    // Only the clock changes: rebuilding the status would reset the meter.
+    recTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000), t = $("status").querySelector(".text");
+      if (t && t.firstChild) t.firstChild.nodeValue = `Listening — ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+    }, 500);
   } catch (e) {
     say("The microphone is blocked in this browser (" + e.name + ").");
   }
@@ -1010,7 +1207,8 @@ $("signout").onclick = () => {
    so re-query when the tab regains attention and every six seconds while visible.
    Never while a capture is in flight or the mic is open. */
 function canAutoRefresh() {
-  return document.visibilityState === "visible" && !busy && !rec && !!session();
+  // Nor while a task is open for editing: a re-render would throw away what is typed.
+  return document.visibilityState === "visible" && !busy && !rec && !!session() && !document.querySelector(".editor");
 }
 document.addEventListener("visibilitychange", () => { if (canAutoRefresh()) refresh(); });
 window.addEventListener("focus", () => { if (canAutoRefresh()) refresh(); });
