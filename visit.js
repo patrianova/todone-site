@@ -10,7 +10,7 @@
   var page = location.pathname.split("/").filter(Boolean)[0] || "home";
   var url = "/v1/visit?page=" + encodeURIComponent(page) +
     (ref ? "&ref=" + ref : "") + (from ? "&from=" + encodeURIComponent(from) : "");
-  try { fetch(url, { method: "POST", keepalive: true }); } catch (e) {}
+  if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) { try { fetch(url, { method: "POST", keepalive: true }); } catch (e) {} }
   if (!ref) return;
   document.querySelectorAll('a[href^="https://apps.apple.com/app/id6808734717"]').forEach(function (a) {
     a.href = "/get?c=" + ref;
@@ -21,6 +21,8 @@
 // Switzerland, Brazil) it stays cookieless until the visitor says yes; everywhere the
 // choice in the small bar at the bottom is kept and respected.
 (function () {
+  // A page opened from this Mac while testing is nobody's visit.
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
   var ID = "G-5N4KGDBRV8", KEY = "todid-analytics-choice";
   var choice = null; try { choice = localStorage.getItem(KEY); } catch (e) {}
   window.dataLayer = window.dataLayer || [];

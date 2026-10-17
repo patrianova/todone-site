@@ -366,6 +366,8 @@
   </div>
 </div>
 
+<!-- First, so the tag is configured before the first event is queued. -->
+<script src="/visit.js"></script>
 <script src="./config.js"></script>
 <script>
 const ZONE = { zoneName: "com.apple.coredata.cloudkit.zone" };
@@ -379,6 +381,18 @@ let view = "open";
 let query = "";
 
 const $ = id => document.getElementById(id);
+
+/* Analytics in the iPhone app's vocabulary (Telemetry.swift), into the same GA4 property
+   through the site's tag and its consent bar (/visit.js). Every value is a closed word,
+   a bucket or a small count: no title, transcript, tag, reply or search text leaves. */
+window.dataLayer = window.dataLayer || [];
+function gtag() { dataLayer.push(arguments); }
+function track(name, params = {}) {
+  try { gtag("event", name, Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))); } catch {}
+}
+const tap = (control, screen = "list") => track("tap", { control, screen });
+function bucketSeconds(s) { return s < 2 ? "0-2s" : s < 5 ? "2-5s" : s < 15 ? "5-15s" : s < 60 ? "15-60s" : "60s+"; }
+function bucketKB(kb) { return kb < 50 ? "<50KB" : kb < 200 ? "50-200KB" : kb < 1000 ? "200KB-1MB" : "1MB+"; }
 
 function show(id) {
   for (const s of ["setup","signin","list"]) $(s).classList.toggle("hidden", s !== id);
@@ -634,14 +648,15 @@ function renderChips(open) {
     if (n) { const s = document.createElement("span"); s.className = "n"; s.textContent = n; b.append(s); }
     host.append(b); return b;
   };
-  if (counts.length) chip("All", 0, !selectedTag, () => { selectedTag = null; render(); });
+  if (counts.length) chip("All", 0, !selectedTag, () => { tap("show_all"); selectedTag = null; render(); });
   for (const [t, n] of counts) {
-    const b = chip(t, n, selectedTag === t, () => { selectedTag = selectedTag === t ? null : t; render(); });
+    const b = chip(t, n, selectedTag === t, () => { tap("tag_chip"); selectedTag = selectedTag === t ? null : t; render(); });
     const x = document.createElement("span"); x.className = "x"; x.textContent = "×"; x.title = `Remove the tag ${t}`;
-    x.onclick = e => { e.stopPropagation(); removeTag(t); };
+    x.onclick = e => { e.stopPropagation(); tap("tag_remove"); removeTag(t); };
     b.append(x);
   }
   chip(counts.length ? "+" : "+ Tag", 0, false, () => {
+    tap("tag_add");
     const name = normTags([prompt("New tag") || ""])[0];
     if (name) declareTags([name]);
   }).title = "New tag";
@@ -687,10 +702,10 @@ function row(r) {
     if (rule) { const p = document.createElement("span"); p.textContent = "\u21bb " + ruleLabel(rule); meta.append(p); }
     body.appendChild(meta);
   }
-  el.querySelector(".check").onclick = () => toggle(r, !done);
-  el.querySelector(".del").onclick = () => del(r);
-  el.querySelector(".edit").onclick = () => edit(r, el);
-  el.querySelector(".title").onclick = () => edit(r, el);
+  el.querySelector(".check").onclick = () => { tap(done ? "reopen_task" : "complete_task"); toggle(r, !done); };
+  el.querySelector(".del").onclick = () => { tap("delete_task"); del(r); };
+  el.querySelector(".edit").onclick = () => { tap("edit_task"); edit(r, el); };
+  el.querySelector(".title").onclick = () => { if (!el.querySelector(".editor")) tap("edit_task"); edit(r, el); };
   return el;
 }
 
@@ -713,10 +728,10 @@ async function refreshQuota() {
   } catch {}
 }
 let freeLimit = 5;
-function showUpgrade(openSheet) {
+function showUpgrade(origin) {
   $("allowance").classList.add("low");
   $("upgrade").classList.remove("hidden");
-  if (openSheet) showProSheet(true);
+  if (origin) showProSheet(true);
 }
 // At the limit it says when the captures come back (the 1st, as on the phone); from the
 // sidebar link it simply explains where Pro is sold.
@@ -727,10 +742,17 @@ function showProSheet(atLimit) {
   $("proLead").textContent = atLimit
     ? `They come back on ${back.toLocaleDateString("en-US", { month:"long", day:"numeric" })}. To keep going now, get Pro. It's sold in the iPhone app:`
     : "$2.99 a month or $19.99 a year, with a free week on the yearly. It's sold in the iPhone app:";
+  proOrigin = atLimit ? "limit" : "settings";
+  track("paywall", { action: "shown", origin: proOrigin });
   $("proSheet").classList.remove("hidden");
   $("proSheet").querySelector(".primary").focus();
 }
-function hideProSheet() { $("proSheet").classList.add("hidden"); }
+let proOrigin = "limit";
+function hideProSheet() {
+  if ($("proSheet").classList.contains("hidden")) return;
+  track("paywall", { action: "closed", origin: proOrigin });
+  $("proSheet").classList.add("hidden");
+}
 
 /* Every record of a type, page by page: one page of 200 left a long list cut short. */
 async function queryAll(recordType) {
@@ -756,6 +778,7 @@ async function refresh() {
     return;
   }
   if (q.status !== 200) {
+    track("sync_error", { why: "load" });
     say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
     if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
       try { localStorage.removeItem("ckSession"); } catch {}
@@ -777,7 +800,7 @@ async function refresh() {
 async function modify(ops) {
   let w = await post("records/modify", { zoneID: ZONE, operations: ops });
   if (w.status !== 200 && zoneMissing(w.json)) { await ensureZone(); w = await post("records/modify", { zoneID: ZONE, operations: ops }); }
-  if (w.status !== 200) { say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
+  if (w.status !== 200) { track("sync_error", { why: "save" }); say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
   for (const fresh of (w.json.records || [])) {
     if (!fresh.recordName) continue;
     const list = fresh.recordType === "CD_TagDefinition" ? tagRecords : records;
@@ -858,6 +881,7 @@ async function toggle(r, complete) {
   } else {
     r.fields.CD_completedAt = before;
     render();
+    track("sync_error", { why: "complete" });
     say("Couldn't save that — " + (resp.json.reason || resp.status));
   }
 }
@@ -875,7 +899,7 @@ function deleteRecords(list, text) {
   const timer = setTimeout(flushPendingDelete, 5000);
   pendingDelete = { list, positions, timer };
   say(text, "said", "Undo", () => {
-    clearTimeout(timer); pendingDelete = null;
+    clearTimeout(timer); pendingDelete = null; tap("undo");
     positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
     render(); say("Put back.", "said");
   });
@@ -887,6 +911,7 @@ async function flushPendingDelete() {
   const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
   if (resp.status !== 200) {
     positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
+    track("sync_error", { why: "delete" });
     render(); say("Couldn't delete that — " + (resp.json.reason || resp.status));
   }
 }
@@ -944,7 +969,7 @@ function edit(r, rowEl) {
   freq.onchange = () => { if (freq.value && !has.checked) { has.checked = true; when.disabled = false; } syncRep(); };
   syncRep();
   has.onchange = () => { when.disabled = !has.checked; if (!has.checked) { freq.value = ""; syncRep(); } if (has.checked) when.focus(); };
-  form.querySelector(".ecancel").onclick = () => render();
+  form.querySelector(".ecancel").onclick = () => { tap("edit_cancel", "edit"); render(); };
   form.onsubmit = async (e) => {
     e.preventDefault();
     const next = title.value.trim();
@@ -955,6 +980,7 @@ function edit(r, rowEl) {
       ? { frequency: freq.value, interval: Math.min(99, Math.max(1, Number(interval.value) || 1)),
           weekdays: freq.value === "weekly" ? [...days].sort() : [] }
       : null;
+    tap("edit_save", "edit");
     await save(r, next, nextDue, rule, normTags(tagsInput.value.split(/[,\n]/)));
   };
   body.replaceChildren(form);
@@ -1114,6 +1140,10 @@ function planActions(agent) {
 }
 async function capture(utterance, audioB64) {
   busy = true;
+  const door = audioB64 ? "web_voice" : "web_typed", t0 = Date.now();
+  const result = (outcome, tasks = 0) => track("capture_result", { outcome, door, tasks: Math.min(tasks, 5),
+                                                                   latency: bucketSeconds((Date.now() - t0) / 1000) });
+  track("capture_sent", { door, size: bucketKB(audioB64 ? audioB64.length * 0.75 / 1024 : 0) });
   say(audioB64 ? "Working out what you said…" : "Working out what you meant…", "busy",
       "Reading the dates and filing it.");
   const parts = [];
@@ -1133,29 +1163,32 @@ async function capture(utterance, audioB64) {
     // stop are 429s too, and they are not a reason to sell Pro.
     if (r.status === 429 && resp.limit) {
       busy = false; freeLimit = resp.limit;
-      say(""); showUpgrade(true); refreshQuota();
+      result("walled"); track("allowance_wall");
+      say(""); showUpgrade("limit"); refreshQuota();
       return;
     }
-    if (!r.ok) { busy = false; say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
-  } catch (e) { busy = false; say("That didn't go through — check your connection.", ""); return; }
+    if (!r.ok) { busy = false; result("refused"); say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
+  } catch (e) { busy = false; result("offline"); say("That didn't go through — check your connection.", ""); return; }
 
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch { busy = false; say("I couldn't read the reply. Nothing was filed."); return; }
+  catch { busy = false; result("error"); say("I couldn't read the reply. Nothing was filed."); return; }
   // The model writes what it heard before it acts. No words → nothing is filed,
   // whatever it put in `actions` (silence used to come back as "buy onions").
   if ("transcript" in agent && nothingHeard(agent.transcript)) {
-    busy = false; say("I didn't hear anything — try again?", ""); return;
+    busy = false; result("nothing_heard"); say("I didn't hear anything — try again?", ""); return;
   }
   const { ops, clearing } = planActions(agent);
+  const added = ops.filter(o => o.operationType === "create" && o.record.recordType === "CD_TodoTask").length;
   if (ops.length) {
     // modify() keeps tags apart from tasks and folds the fresh rows in at once:
     // CloudKit queries are eventually consistent, so waiting on a re-query made
     // captures look like they vanished.
-    if (!await modify(ops)) { busy = false; return; }
+    if (!await modify(ops)) { busy = false; result("error"); return; }
     render();
   }
   busy = false;
+  result(ops.length || clearing ? "filed" : (agent.actions || []).some(a => a.type === "query_tasks") ? "answered" : "nothing_to_do", added);
   if (clearing) deleteRecords(clearing.list, (agent.reply ? agent.reply + " " : "") + clearing.text);
   else say(agent.reply || "Filed.", "said");
   refreshQuota();
@@ -1174,14 +1207,16 @@ async function micToggle() {
     btn.classList.remove("recording"); btn.innerHTML = MIC_ICON;
 
     let total = 0; for (const c of chunks) total += c.length;
-    if (total < 4000) { say("That was too short to hear — click the mic, talk, then click stop."); return; }
+    const seconds = total / rate;
+    if (total < 4000) { track("capture_refused", { why: "too_short", door: "web_voice" }); say("That was too short to hear — click the mic, talk, then click stop."); return; }
     const all = new Float32Array(total); let o = 0;
     for (const c of chunks) { all.set(c, o); o += c.length; }
     // Nothing said → nothing sent. Room tone peaks well under 0.005 (≈ -46 dBFS);
     // speech clears 0.02 easily. Silence handed to the model comes back as an
     // errand nobody asked for.
     let peak = 0; for (let i = 0; i < all.length; i++) { const v = Math.abs(all[i]); if (v > peak) peak = v; }
-    if (peak < 0.005) { say("I didn't hear anything — try again?", ""); return; }
+    if (peak < 0.005) { track("capture_refused", { why: "nothing_said", door: "web_voice" }); say("I didn't hear anything — try again?", ""); return; }
+    track("capture_ended", { how: "send", length: bucketSeconds(seconds) });
     const ratio = rate / 16000, n = Math.floor(all.length / ratio);
     const pcm = new Int16Array(n);
     for (let i = 0; i < n; i++) pcm[i] = Math.max(-32768, Math.min(32767, all[Math.floor(i * ratio)] * 32767));
@@ -1200,6 +1235,8 @@ async function micToggle() {
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    track("permission", { kind: "microphone", state: "granted" });
+    track("capture_started", { door: "web_voice", inline: 1 });
     const ctx = new AudioContext();
     const src = ctx.createMediaStreamSource(stream);
     const node = ctx.createScriptProcessor(4096, 1, 1);
@@ -1225,6 +1262,8 @@ async function micToggle() {
       if (t && t.firstChild) t.firstChild.nodeValue = `Listening — ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
     }, 500);
   } catch (e) {
+    track("permission", { kind: "microphone", state: "denied" });
+    track("capture_refused", { why: "mic_missing", door: "web_voice" });
     say("The microphone is blocked in this browser (" + e.name + ").");
   }
 }
@@ -1235,23 +1274,29 @@ $("add").addEventListener("submit", e => {
   const text = $("newTitle").value.trim();
   if (!text) return;
   $("newTitle").value = "";
+  tap("send_typed");
   capture(text, null);
 });
 $("micBtn").onclick = micToggle;
 $("upgrade").onclick = () => showProSheet(false);
 $("proClose").onclick = hideProSheet;
+$("proSheet").querySelector(".primary").onclick = () => track("paywall", { action: "download", origin: proOrigin });
+document.querySelector(".side .getapp").onclick = () => tap("get_app");
+$("search").addEventListener("focus", () => tap("search"));
 $("proSheet").onclick = e => { if (e.target === $("proSheet")) hideProSheet(); };
 $("search").addEventListener("input", e => { query = e.target.value; render(); });
 for (const b of document.querySelectorAll(".navitem")) {
   b.onclick = () => {
     view = b.dataset.view;
+    track("screen_view", { screen_name: view === "done" ? "done" : "list" });
     for (const o of document.querySelectorAll(".navitem")) o.classList.toggle("on", o === b);
     $("side").classList.remove("mobile-visible");
     render();
   };
 }
-$("menuBtn").onclick = () => $("side").classList.toggle("mobile-visible");
+$("menuBtn").onclick = () => { tap("menu"); $("side").classList.toggle("mobile-visible"); };
 $("signout").onclick = () => {
+  track("sign_in", { action: "signed_out" });
   try { localStorage.removeItem("ckSession"); } catch {}
   location.reload();
 };
@@ -1262,7 +1307,10 @@ function canAutoRefresh() {
   // Nor while a task is open for editing: a re-render would throw away what is typed.
   return document.visibilityState === "visible" && !busy && !rec && !!session() && !document.querySelector(".editor");
 }
-document.addEventListener("visibilitychange", () => { if (canAutoRefresh()) refresh(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") track("app_open", { kind: "foreground", door: "web" });
+  if (canAutoRefresh()) refresh();
+});
 window.addEventListener("focus", () => { if (canAutoRefresh()) refresh(); });
 setInterval(() => { if (canAutoRefresh()) refresh(); }, 6000);
 
@@ -1275,6 +1323,7 @@ document.addEventListener("keydown", e => {
 });
 
 (async function boot() {
+  track("app_open", { kind: "launch", door: "web" });
   if (!window.TODID_CK_TOKEN) { show("setup"); return; }
   const params = new URLSearchParams(location.search);
   const fromURL = params.get("ckSession");
@@ -1292,19 +1341,23 @@ document.addEventListener("keydown", e => {
       refreshQuota();
       $("signout").classList.remove("hidden");
       show("list");
+      track("sign_in", { action: fromURL ? "done" : "restored" });
+      track("screen_view", { screen_name: "list" });
       say("");
       await ensureZone();
       await refresh();
       return;
     }
     try { localStorage.removeItem("ckSession"); } catch {}
+    track("sign_in", { action: "expired" });
   }
   show("signin");
+  track("sign_in", { action: "shown" });
   $("signinBtn").onclick = async () => {
     const r = await fetch(api("users/current"));
     const j = await r.json().catch(() => ({}));
-    if (j.redirectURL) location.href = j.redirectURL;
-    else $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
+    if (j.redirectURL) { track("sign_in", { action: "started" }); location.href = j.redirectURL; }
+    else track("sign_in", { action: "failed" }), $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
   };
 })();
 </script>
