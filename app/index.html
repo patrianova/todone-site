@@ -232,6 +232,19 @@
     .bars span { transition:none; }
   }
 
+  /* The way to Pro from the web: Apple sells it inside the iPhone app, so this page
+     says so and hands over the download, instead of a price list that cannot sell. */
+  .sheet { position:fixed; inset:0; z-index:50; background:rgba(26,26,25,.42); display:flex; align-items:center; justify-content:center; padding:16px; }
+  .sheet .card { background:var(--card); border-radius:24px; max-width:420px; width:100%; padding:32px 28px 24px; display:flex; flex-direction:column; gap:14px; text-align:center; }
+  .sheet .card .mark { width:56px; height:56px; border-radius:13px; margin:0 auto 4px; }
+  .sheet h2 { font-size:24px; font-weight:600; letter-spacing:-.02em; text-wrap:balance; }
+  .sheet p { font-size:15px; color:var(--body); line-height:1.5; }
+  .sheet ol { text-align:left; font-size:15px; color:var(--ink); line-height:1.5; padding-left:22px; display:flex; flex-direction:column; gap:6px; }
+  .sheet .primary { display:block; background:var(--accent); color:#fff; border-radius:100px; padding:16px; font-weight:600; font-size:16px; }
+  .sheet .secondary { background:none; border:none; font:inherit; font-size:15px; color:var(--muted); cursor:pointer; padding:6px; }
+  .sheet .secondary:hover { color:var(--ink); }
+  .side .getapp { display:flex; align-items:center; gap:8px; font-size:14px !important; font-weight:600; color:var(--ink) !important; }
+
   /* gates ------------------------------------------------------------ */
   .gate {
     flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -280,7 +293,8 @@
     <div class="foot">
       <div class="who" id="whoami"></div>
       <div class="allowance" id="allowance"></div>
-      <a class="upgrade hidden" id="upgrade" href="../#pricing">Get To-did Pro — unlimited captures</a>
+      <button class="upgrade hidden" id="upgrade" type="button">Get To-did Pro — unlimited captures</button>
+      <a class="getapp" href="/get/web" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>Get the iPhone app</a>
       <a href="../">About To-did</a>
       <a href="../privacy/">Privacy</a>
       <button id="signout" class="hidden">Sign out</button>
@@ -334,6 +348,22 @@
     </div>
 
   </main>
+</div>
+
+<div class="sheet hidden" id="proSheet" role="dialog" aria-modal="true" aria-labelledby="proTitle">
+  <div class="card">
+    <span class="mark"><svg width="40" height="40" viewBox="0 0 100 100"><path d="M20 52 L40 72 L82 24" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <h2 id="proTitle"></h2>
+    <p id="proLead"></p>
+    <ol>
+      <li>Get To-did on your iPhone and sign in to the same iCloud.</li>
+      <li>Open <b>Settings → To-did Pro</b> and pick a plan.</li>
+      <li>Pro turns on here too: unlimited captures everywhere.</li>
+    </ol>
+    <a class="primary" href="/get/web" target="_blank" rel="noopener">Download To-did for iPhone</a>
+    <p style="font-size:13px;color:var(--muted)">Your list stays here. Editing, checking off and deleting never count.</p>
+    <button class="secondary" type="button" id="proClose">Not now</button>
+  </div>
 </div>
 
 <script src="./config.js"></script>
@@ -675,16 +705,32 @@ async function refreshQuota() {
     const el = $("allowance");
     if (q.pro) { el.textContent = "To-did Pro · unlimited"; el.classList.remove("low"); }
     else {
+      freeLimit = q.limit || freeLimit;
       el.textContent = `${q.remaining} of ${q.limit} free captures left`;
       el.classList.toggle("low", q.remaining <= 3);
       if (q.remaining <= 0) showUpgrade();
     }
   } catch {}
 }
-function showUpgrade() {
+let freeLimit = 5;
+function showUpgrade(openSheet) {
   $("allowance").classList.add("low");
   $("upgrade").classList.remove("hidden");
+  if (openSheet) showProSheet(true);
 }
+// At the limit it says when the captures come back (the 1st, as on the phone); from the
+// sidebar link it simply explains where Pro is sold.
+function showProSheet(atLimit) {
+  const back = new Date(); back.setMonth(back.getMonth() + 1, 1);
+  const month = new Date().toLocaleDateString("en-US", { month:"long" });
+  $("proTitle").textContent = atLimit ? `That's your ${freeLimit} free captures for ${month}` : "To-did Pro is unlimited";
+  $("proLead").textContent = atLimit
+    ? `They come back on ${back.toLocaleDateString("en-US", { month:"long", day:"numeric" })}. To keep going now, get Pro. It's sold in the iPhone app:`
+    : "$2.99 a month or $19.99 a year, with a free week on the yearly. It's sold in the iPhone app:";
+  $("proSheet").classList.remove("hidden");
+  $("proSheet").querySelector(".primary").focus();
+}
+function hideProSheet() { $("proSheet").classList.add("hidden"); }
 
 /* Every record of a type, page by page: one page of 200 left a long list cut short. */
 async function queryAll(recordType) {
@@ -1083,11 +1129,11 @@ async function capture(utterance, audioB64) {
                  "X-Todid-CKSession": session() },
       body: JSON.stringify({ contents: [{ role:"user", parts }] }) });
     resp = await r.json();
-    if (r.status === 429) {
-      busy = false;
-      say(resp.message || "That's this month's free captures.", "",
-          "To-did Pro is unlimited — see the plans.");
-      showUpgrade();
+    // Only the monthly allowance carries a limit; the web's daily cap and the runaway
+    // stop are 429s too, and they are not a reason to sell Pro.
+    if (r.status === 429 && resp.limit) {
+      busy = false; freeLimit = resp.limit;
+      say(""); showUpgrade(true); refreshQuota();
       return;
     }
     if (!r.ok) { busy = false; say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
@@ -1192,6 +1238,9 @@ $("add").addEventListener("submit", e => {
   capture(text, null);
 });
 $("micBtn").onclick = micToggle;
+$("upgrade").onclick = () => showProSheet(false);
+$("proClose").onclick = hideProSheet;
+$("proSheet").onclick = e => { if (e.target === $("proSheet")) hideProSheet(); };
 $("search").addEventListener("input", e => { query = e.target.value; render(); });
 for (const b of document.querySelectorAll(".navitem")) {
   b.onclick = () => {
@@ -1219,6 +1268,7 @@ setInterval(() => { if (canAutoRefresh()) refresh(); }, 6000);
 
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("newTitle").focus(); }
+  if (e.key === "Escape" && !$("proSheet").classList.contains("hidden")) hideProSheet();
   if (e.key === "Escape" && document.activeElement === $("search")) {
     $("search").value = ""; query = ""; render(); $("search").blur();
   }
