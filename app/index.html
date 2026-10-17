@@ -391,6 +391,19 @@ function track(name, params = {}) {
   try { gtag("event", name, Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))); } catch {}
 }
 const tap = (control, screen = "list") => track("tap", { control, screen });
+/* Every failure goes to the service's log (event "web_error") as well as Analytics, so
+   a problem in someone's browser is seen without them writing in. The error's own words,
+   the file and line, and the step — never a title, a transcript or who it was. */
+let lastStep = "boot";
+function logError(kind, message, extra = {}) {
+  try {
+    const body = JSON.stringify({ kind, message: String(message || "").slice(0, 300), step: lastStep, ...extra });
+    navigator.sendBeacon ? navigator.sendBeacon("/v1/weblog", body) : fetch("/v1/weblog", { method: "POST", body, keepalive: true });
+  } catch {}
+  track("web_error", { why: kind });
+}
+window.addEventListener("error", e => logError("error", e.message, { where: `${(e.filename || "").split("/").pop()}:${e.lineno}:${e.colno}`, stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1200) : "" }));
+window.addEventListener("unhandledrejection", e => logError("rejection", e.reason && (e.reason.message || e.reason), { stack: e.reason && e.reason.stack ? String(e.reason.stack).slice(0, 1200) : "" }));
 function bucketSeconds(s) { return s < 2 ? "0-2s" : s < 5 ? "2-5s" : s < 15 ? "5-15s" : s < 60 ? "15-60s" : "60s+"; }
 function bucketKB(kb) { return kb < 50 ? "<50KB" : kb < 200 ? "50-200KB" : kb < 1000 ? "200KB-1MB" : "1MB+"; }
 
@@ -714,7 +727,7 @@ async function refreshQuota() {
   if (!ckUser) return;
   try {
     const r = await fetch(API + "/v1/quota",
-      { headers: { "X-Todid-User": ckUser } });
+      { headers: { "X-Todid-User": ckUser, "X-Todid-CKSession": session() } });
     if (!r.ok) return;
     const q = await r.json();
     const el = $("allowance");
@@ -769,6 +782,7 @@ async function queryAll(recordType) {
 let tagRecords = [];
 function declaredTags() { return [...new Set(tagRecords.map(r => normTags([fieldOf(r, "CD_name")])[0]).filter(Boolean))]; }
 async function refresh() {
+  lastStep = "load";
   const q = await queryAll("CD_TodoTask");
   if (q.status !== 200 && zoneMissing(q.json)) {
     // First time this iCloud account has ever seen To-did.
@@ -778,7 +792,7 @@ async function refresh() {
     return;
   }
   if (q.status !== 200) {
-    track("sync_error", { why: "load" });
+    track("sync_error", { why: "load" }); logError("sync", q.json.serverErrorCode || q.json.reason || q.status, { where: "load" });
     say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
     if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
       try { localStorage.removeItem("ckSession"); } catch {}
@@ -798,9 +812,10 @@ async function refresh() {
 /* Writes a batch and keeps the fresh change tags, or the next edit of these rows is
    refused as a conflict. Returns false when CloudKit said no. */
 async function modify(ops) {
+  lastStep = "save";
   let w = await post("records/modify", { zoneID: ZONE, operations: ops });
   if (w.status !== 200 && zoneMissing(w.json)) { await ensureZone(); w = await post("records/modify", { zoneID: ZONE, operations: ops }); }
-  if (w.status !== 200) { track("sync_error", { why: "save" }); say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
+  if (w.status !== 200) { track("sync_error", { why: "save" }); logError("sync", w.json.serverErrorCode || w.json.reason || w.status, { where: "save" }); say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
   for (const fresh of (w.json.records || [])) {
     if (!fresh.recordName) continue;
     const list = fresh.recordType === "CD_TagDefinition" ? tagRecords : records;
@@ -881,7 +896,7 @@ async function toggle(r, complete) {
   } else {
     r.fields.CD_completedAt = before;
     render();
-    track("sync_error", { why: "complete" });
+    track("sync_error", { why: "complete" }); logError("sync", resp.json.serverErrorCode || resp.json.reason || resp.status, { where: "complete" });
     say("Couldn't save that — " + (resp.json.reason || resp.status));
   }
 }
@@ -911,7 +926,7 @@ async function flushPendingDelete() {
   const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
   if (resp.status !== 200) {
     positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
-    track("sync_error", { why: "delete" });
+    track("sync_error", { why: "delete" }); logError("sync", resp.json.serverErrorCode || resp.json.reason || resp.status, { where: "delete" });
     render(); say("Couldn't delete that — " + (resp.json.reason || resp.status));
   }
 }
@@ -1139,7 +1154,7 @@ function planActions(agent) {
   return { ops, clearing };
 }
 async function capture(utterance, audioB64) {
-  busy = true;
+  busy = true; lastStep = "capture";
   const door = audioB64 ? "web_voice" : "web_typed", t0 = Date.now();
   const result = (outcome, tasks = 0) => track("capture_result", { outcome, door, tasks: Math.min(tasks, 5),
                                                                    latency: bucketSeconds((Date.now() - t0) / 1000) });
@@ -1167,12 +1182,12 @@ async function capture(utterance, audioB64) {
       say(""); showUpgrade("limit"); refreshQuota();
       return;
     }
-    if (!r.ok) { busy = false; result("refused"); say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
-  } catch (e) { busy = false; result("offline"); say("That didn't go through — check your connection.", ""); return; }
+    if (!r.ok) { busy = false; result("refused"); logError("capture", `${r.status} ${resp.error || ""}`, { where: "capture" }); say("That didn't go through: " + (resp.message || resp.error || r.status)); return; }
+  } catch (e) { busy = false; result("offline"); logError("capture", e.name + ": " + e.message, { where: "capture network" }); say("That didn't go through — check your connection.", ""); return; }
 
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch { busy = false; result("error"); say("I couldn't read the reply. Nothing was filed."); return; }
+  catch (e) { busy = false; result("error"); logError("capture", "unreadable reply: " + e.message, { where: "capture parse" }); say("I couldn't read the reply. Nothing was filed."); return; }
   // The model writes what it heard before it acts. No words → nothing is filed,
   // whatever it put in `actions` (silence used to come back as "buy onions").
   if ("transcript" in agent && nothingHeard(agent.transcript)) {
@@ -1263,6 +1278,7 @@ async function micToggle() {
     }, 500);
   } catch (e) {
     track("permission", { kind: "microphone", state: "denied" });
+    logError("mic", e.name + ": " + e.message, { where: "getUserMedia" });
     track("capture_refused", { why: "mic_missing", door: "web_voice" });
     say("The microphone is blocked in this browser (" + e.name + ").");
   }
@@ -1357,7 +1373,7 @@ document.addEventListener("keydown", e => {
     const r = await fetch(api("users/current"));
     const j = await r.json().catch(() => ({}));
     if (j.redirectURL) { track("sign_in", { action: "started" }); location.href = j.redirectURL; }
-    else track("sign_in", { action: "failed" }), $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
+    else track("sign_in", { action: "failed" }), logError("signin", "no redirectURL, status " + r.status, { where: "users/current" }), $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
   };
 })();
 </script>
