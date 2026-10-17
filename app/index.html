@@ -75,7 +75,7 @@
   .side .allowance.low { color:var(--accent); font-weight:600; }
   .side .upgrade { font-size:13px; color:var(--accent) !important; font-weight:600; }
   .side .foot a, .side .foot button {
-    font-size:13px; color:var(--faint); background:none; border:none; padding:0;
+    color:var(--faint); background:none; border:none; padding:0;
     font:inherit; font-size:13px; cursor:pointer; text-align:left;
   }
   .side .foot a:hover, .side .foot button:hover { color:var(--ink); }
@@ -156,8 +156,10 @@
   .wd button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
   .actions { display:flex; align-items:center; gap:2px; color:var(--muted); opacity:0; }
   .task:hover .actions, .task:focus-within .actions { opacity:1; }
-  .actions button { background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0; }
-  .actions button { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; }
+  .actions button {
+    background:none; border:none; padding:2px; cursor:pointer; color:inherit; line-height:0;
+    width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+  }
   .actions button:hover { color:var(--ink); background:var(--hair); }
   .actions .del:hover { color:var(--accent); }
   .hint.act { background:none; border:none; padding:0; font:inherit; color:var(--accent); cursor:pointer; text-decoration:underline; }
@@ -190,7 +192,6 @@
   }
   .circlebtn:active { transform:scale(.95); }
   #micBtn { background:var(--accent); }
-  #micBtn.recording { background:var(--ink); }
   #addBtn { background:var(--ink); }
 
   /* status surface: sits above the composer, never over the list */
@@ -205,7 +206,6 @@
   .status.said { background:rgba(255,46,119,.06); }
   .status .text { flex:1; min-width:0; }
   .status .hint { color:var(--muted); font-size:13px; margin-top:2px; }
-  .status .timer { font-variant-numeric:tabular-nums; font-weight:600; color:var(--accent); }
   .status .dot {
     width:9px; height:9px; border-radius:50%; background:var(--accent); flex:none;
     animation:pulse 1.2s ease-in-out infinite;
@@ -367,13 +367,16 @@
 </div>
 
 <!-- First, so the tag is configured before the first event is queued. -->
-<script src="/visit.js?v=20261017"></script>
+<script src="/visit.js?v=20261017b"></script>
 <script src="./config.js"></script>
 <script>
 const ZONE = { zoneName: "com.apple.coredata.cloudkit.zone" };
 const BASE = "https://api.apple-cloudkit.com/database/1/iCloud.app.todid.app/production/private";
+/* Our service, called directly and never through the site's Hosting rewrite: behind the
+   rewrite Cloud Run saw Google's proxy address for everyone, so every per-address cap and
+   the ad-click dedupe lumped all web users together. The server already allows this origin. */
+const API = "https://todone-capture-owi5vfwija-uc.a.run.app";
 const MIC_STOP_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
-const MIC_ICON = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>';
 
 let records = [];
 let busy = false;
@@ -381,6 +384,8 @@ let view = "open";
 let query = "";
 
 const $ = id => document.getElementById(id);
+// The microphone drawn in the page is the one put back after a recording.
+const MIC_ICON = $("micBtn").innerHTML.trim();
 
 /* Analytics in the iPhone app's vocabulary (Telemetry.swift), into the same GA4 property
    through the site's tag and its consent bar (/visit.js). Every value is a closed word,
@@ -398,7 +403,7 @@ let lastStep = "boot";
 function logError(kind, message, extra = {}) {
   try {
     const body = JSON.stringify({ kind, message: String(message || "").slice(0, 300), step: lastStep, ...extra });
-    navigator.sendBeacon ? navigator.sendBeacon("/v1/weblog", body) : fetch("/v1/weblog", { method: "POST", body, keepalive: true });
+    navigator.sendBeacon ? navigator.sendBeacon(API + "/v1/weblog", body) : fetch(API + "/v1/weblog", { method: "POST", body, keepalive: true });
   } catch {}
   track("web_error", { why: kind });
 }
@@ -449,8 +454,8 @@ function api(path) {
   if (s) u += `&ckSession=${encodeURIComponent(s)}`;
   return u;
 }
-async function post(path, body) {
-  const r = await fetch(api(path), { method:"POST", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(body) });
+async function post(path, body, init = {}) {
+  const r = await fetch(api(path), { method:"POST", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(body), ...init });
   return { status: r.status, json: await r.json().catch(() => ({})) };
 }
 
@@ -519,27 +524,49 @@ function ruleFields(rule) {
     : { CD_recurrenceFrequency:{ value:null }, CD_recurrenceInterval:{ value:null }, CD_recurrenceWeekdays:{ value:null } };
 }
 function isoWeekday(d) { const w = d.getDay(); return w === 0 ? 7 : w; }
+// The phone's Calendar arithmetic: a month or a year on from a day the target month
+// lacks lands on that month's last day (31 Jan → 28 Feb), never spills into the next.
 function nextDate(rule, fromMs) {
-  const d = new Date(fromMs);
+  const d = new Date(fromMs), day = d.getDate();
   if (rule.frequency === "daily")   { d.setDate(d.getDate() + rule.interval); return d.getTime(); }
-  if (rule.frequency === "monthly") { d.setMonth(d.getMonth() + rule.interval); return d.getTime(); }
-  if (rule.frequency === "yearly")  { d.setFullYear(d.getFullYear() + rule.interval); return d.getTime(); }
+  if (rule.frequency === "monthly") { d.setMonth(d.getMonth() + rule.interval); if (d.getDate() !== day) d.setDate(0); return d.getTime(); }
+  if (rule.frequency === "yearly")  { d.setFullYear(d.getFullYear() + rule.interval); if (d.getDate() !== day) d.setDate(0); return d.getTime(); }
   const wanted = rule.weekdays.length ? rule.weekdays : [isoWeekday(d)];
-  const week0 = mondayOf(d);
+  // "Every other week" counts weeks as the phone does, from the locale's first weekday.
+  const week0 = weekStart(d);
   for (let off = 1; off <= rule.interval * 7 + 7; off++) {
     const c = new Date(fromMs); c.setDate(c.getDate() + off);
     if (!wanted.includes(isoWeekday(c))) continue;
-    const weeks = Math.round((mondayOf(c) - week0) / 604800000);
+    const weeks = Math.round((weekStart(c) - week0) / 604800000);
     if (weeks === 0 || weeks % rule.interval === 0) return c.getTime();
   }
   return null;
 }
-function mondayOf(d) { const m = new Date(d); m.setHours(0,0,0,0); m.setDate(m.getDate() - (isoWeekday(m) - 1)); return m.getTime(); }
 // The first occurrence after now, so an old recurring task is not cleared one missed copy at a time.
 function nextAfterNow(rule, dueMs) {
   let t = dueMs;
   for (let i = 0; i < 10000; i++) { t = nextDate(rule, t); if (t === null || t > Date.now()) return t; }
   return null;
+}
+// Completing one occurrence files the next, unless another device already did. The one
+// builder for the check box and for a voice "done": the fields the completed row gains
+// and the create for its successor, or null when there is nothing to file.
+function recurrenceOps(r, now) {
+  const rule = ruleOf(r), due = dueOf(r), myID = fieldOf(r, "CD_id");
+  if (!rule || !due) return null;
+  const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || myID;
+  const next = nextAfterNow(rule, due);
+  const exists = next !== null && records.some(x => !isDone(x) && fieldOf(x, "CD_recurrenceSeriesID") === seriesID
+                                                 && Math.abs((dueOf(x) || 0) - next) < 1000);
+  if (next === null || exists) return null;
+  return {
+    fields: { CD_recurrenceSeriesID: { value: seriesID } },
+    create: { operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
+      CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
+      CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: now }, CD_dueAt:{ value: next },
+      CD_sourceUtterance:{ value: fieldOf(r, "CD_sourceUtterance") || "" },
+      ...tagsField(tagsOf(r)), ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: myID } } } },
+  };
 }
 const WD = ["M","T","W","T","F","S","S"];
 const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -781,48 +808,74 @@ async function queryAll(recordType) {
 }
 let tagRecords = [];
 function declaredTags() { return [...new Set(tagRecords.map(r => normTags([fieldOf(r, "CD_name")])[0]).filter(Boolean))]; }
+let refreshing = false, lastRenderKey = null;
 async function refresh() {
-  lastStep = "load";
-  const q = await queryAll("CD_TodoTask");
-  if (q.status !== 200 && zoneMissing(q.json)) {
-    // First time this iCloud account has ever seen To-did.
-    await ensureZone();
-    records = [];
-    render();
-    return;
-  }
-  if (q.status !== 200) {
-    track("sync_error", { why: "load" }); logError("sync", q.json.serverErrorCode || q.json.reason || q.status, { where: "load" });
-    say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
-    if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
-      try { localStorage.removeItem("ckSession"); } catch {}
-      show("signin");
+  if (refreshing) return;  // one query at a time
+  refreshing = true;
+  try {
+    lastStep = "load";
+    const q = await queryAll("CD_TodoTask");
+    if (q.status !== 200 && zoneMissing(q.json)) {
+      // First time this iCloud account has ever seen To-did.
+      await ensureZone();
+      records = [];
+      render();
+      return;
     }
-    return;
-  }
-  // A tag no device ever declared is a type CloudKit has not met: no rows, not an error.
-  const t = await queryAll("CD_TagDefinition");
-  if (t.status === 200) tagRecords = t.records;
-  // Rows deleted a moment ago stay gone while Undo is still on offer.
-  const leaving = new Set(pendingDelete ? pendingDelete.list.map(r => r.recordName) : []);
-  records = q.records.filter(r => !leaving.has(r.recordName));
-  render();
+    if (q.status !== 200) {
+      track("sync_error", { why: "load" }); logError("sync", q.json.serverErrorCode || q.json.reason || q.status, { where: "load" });
+      say("Couldn't load your list: " + (q.json.reason || q.json.serverErrorCode || q.status));
+      if (q.json.serverErrorCode === "AUTHENTICATION_FAILED" || q.status === 401 || q.status === 421) {
+        try { localStorage.removeItem("ckSession"); } catch {}
+        show("signin");
+      }
+      return;
+    }
+    // A tag no device ever declared is a type CloudKit has not met: no rows, not an error.
+    const t = await queryAll("CD_TagDefinition");
+    // An editor opened while the queries were out: what is being typed wins over the poll.
+    if (document.querySelector(".editor")) return;
+    if (t.status === 200) tagRecords = t.records;
+    // Rows deleted a moment ago stay gone while Undo is still on offer.
+    const leaving = new Set(pendingDelete ? pendingDelete.list.map(r => r.recordName) : []);
+    records = q.records.filter(r => !leaving.has(r.recordName));
+    // Nothing moved since the last poll: leave the list as it stands. The minute is part
+    // of the key, so a task that becomes late still turns pink within a minute.
+    const key = Math.floor(Date.now() / 60000) + "|" + [...records, ...tagRecords].map(r => r.recordName + r.recordChangeTag).join("|");
+    if (key === lastRenderKey) return;
+    lastRenderKey = key;
+    render();
+  } finally { refreshing = false; }
 }
 
 /* Writes a batch and keeps the fresh change tags, or the next edit of these rows is
-   refused as a conflict. Returns false when CloudKit said no. */
-async function modify(ops) {
+   refused as a conflict. CloudKit answers 200 even when it refused a row: that row comes
+   back as {recordName, serverErrorCode, reason} with no fields (another device changed it
+   first), so every row is checked and the list is re-read. Returns false when CloudKit
+   said no to the batch or to any row. `keepalive` lets the write outlive the page;
+   `why` names the step for the log. */
+async function modify(ops, { keepalive = false, why = "save" } = {}) {
   lastStep = "save";
-  let w = await post("records/modify", { zoneID: ZONE, operations: ops });
-  if (w.status !== 200 && zoneMissing(w.json)) { await ensureZone(); w = await post("records/modify", { zoneID: ZONE, operations: ops }); }
-  if (w.status !== 200) { track("sync_error", { why: "save" }); logError("sync", w.json.serverErrorCode || w.json.reason || w.status, { where: "save" }); say("Couldn't save that — " + (w.json.reason || w.status)); return false; }
+  const send = () => post("records/modify", { zoneID: ZONE, operations: ops }, keepalive ? { keepalive: true } : {});
+  let w = await send();
+  if (w.status !== 200 && zoneMissing(w.json)) { await ensureZone(); w = await send(); }
+  const verb = why === "delete" ? "delete" : "save";
+  if (w.status !== 200) { track("sync_error", { why }); logError("sync", w.json.serverErrorCode || w.json.reason || w.status, { where: why }); say(`Couldn't ${verb} that — ` + (w.json.reason || w.status)); return false; }
+  let refused = null;
   for (const fresh of (w.json.records || [])) {
     if (!fresh.recordName) continue;
+    if (fresh.serverErrorCode) { refused = refused || fresh.serverErrorCode; continue; }
     const list = fresh.recordType === "CD_TagDefinition" ? tagRecords : records;
     const i = list.findIndex(x => x.recordName === fresh.recordName);
     if (fresh.deleted) { if (i >= 0) list.splice(i, 1); }
     else if (i >= 0) list[i] = fresh;
     else if (fresh.fields) list.push(fresh);
+  }
+  if (refused) {
+    track("sync_error", { why }); logError("sync", refused, { where: why + " row" });
+    say("Couldn't save — your list changed on another device", "");
+    setTimeout(refresh, 0);  // after the caller has rolled its row back
+    return false;
   }
   return true;
 }
@@ -861,47 +914,22 @@ async function toggle(r, complete) {
   const ops = [{ operationType:"update",
     record: { recordName:r.recordName, recordChangeTag:r.recordChangeTag, recordType:"CD_TodoTask",
               fields: { CD_completedAt: complete ? { value: now } : { value: null } } } }];
-  const rule = ruleOf(r), due = dueOf(r), myID = fieldOf(r, "CD_id");
-  if (complete && rule && due) {
-    // Completing one occurrence files the next, unless another device already did.
-    const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || myID;
-    const next = nextAfterNow(rule, due);
-    const exists = next !== null && records.some(x => !isDone(x) && fieldOf(x, "CD_recurrenceSeriesID") === seriesID
-                                                   && Math.abs((dueOf(x) || 0) - next) < 1000);
-    if (next !== null && !exists) {
-      ops[0].record.fields.CD_recurrenceSeriesID = { value: seriesID };
-      ops.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
-        CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
-        CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: now }, CD_dueAt:{ value: next },
-        CD_sourceUtterance:{ value: fieldOf(r, "CD_sourceUtterance") || "" },
-        ...tagsField(tagsOf(r)), ...ruleFields(rule), CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: myID } } } });
-    }
-  } else if (!complete && rule) {
+  if (complete) {
+    const rec = recurrenceOps(r, now);
+    if (rec) { Object.assign(ops[0].record.fields, rec.fields); ops.push(rec.create); }
+  } else if (ruleOf(r)) {
     // Reopening takes back the copy it generated, so the series is not on the list twice.
+    const myID = fieldOf(r, "CD_id");
     const child = records.find(x => !isDone(x) && fieldOf(x, "CD_recurrenceParentID") === myID);
     if (child) ops.push({ operationType:"forceDelete", record:{ recordName: child.recordName, recordType:"CD_TodoTask" } });
   }
   render();
-  const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
-  if (resp.status === 200) {
-    // Keep the new change tags, or the next edit of these rows is rejected as a conflict.
-    for (const fresh of (resp.json.records || [])) {
-      if (!fresh.recordName) continue;
-      const i = records.findIndex(x => x.recordName === fresh.recordName);
-      if (fresh.deleted) { if (i >= 0) records.splice(i, 1); }
-      else if (i >= 0) records[i] = fresh;
-      else if (fresh.fields) records.push(fresh);
-    }
-    render();
-  } else {
-    r.fields.CD_completedAt = before;
-    render();
-    track("sync_error", { why: "complete" }); logError("sync", resp.json.serverErrorCode || resp.json.reason || resp.status, { where: "complete" });
-    say("Couldn't save that — " + (resp.json.reason || resp.status));
-  }
+  // modify() keeps the new change tags; a refusal puts the circle back the way it was.
+  if (!await modify(ops, { why: "complete" })) r.fields.CD_completedAt = before;
+  render();
 }
 /* Deleting asks no question. The row goes at once; the server hears about it
-   five seconds later unless you tap Undo. One mechanism serves a swipe on a row
+   five seconds later unless you tap Undo. One mechanism serves the trash button
    and "clear my tasks" alike. */
 let pendingDelete = null;
 function del(r) { deleteRecords([r], "Deleted “" + titleOf(r) + "”."); }
@@ -923,11 +951,10 @@ async function flushPendingDelete() {
   if (!pendingDelete) return;
   const { list, positions, timer } = pendingDelete; clearTimeout(timer); pendingDelete = null;
   const ops = list.map(r => ({ operationType:"forceDelete", record:{ recordName: r.recordName } }));
-  const resp = await post("records/modify", { zoneID: ZONE, operations: ops });
-  if (resp.status !== 200) {
+  // keepalive: on pagehide the tab may be gone before CloudKit answers; the delete still lands.
+  if (!await modify(ops, { keepalive: true, why: "delete" })) {
     positions.sort((a, b) => a.i - b.i).forEach(({ r, i }) => records.splice(Math.max(0, i), 0, r));
-    track("sync_error", { why: "delete" }); logError("sync", resp.json.serverErrorCode || resp.json.reason || resp.status, { where: "delete" });
-    render(); say("Couldn't delete that — " + (resp.json.reason || resp.status));
+    render();
   }
 }
 window.addEventListener("pagehide", flushPendingDelete);
@@ -1019,8 +1046,6 @@ async function save(r, title, dueMs, rule, tags) {
 }
 
 /* ---- capture through the model (same proxy the apps use) ------------ */
-const SAME_ORIGIN_API = /(^|\.)(to-did\.app|todone-51870\.web\.app|todone-51870\.firebaseapp\.com)$/.test(location.hostname);
-const API = SAME_ORIGIN_API ? "" : "https://todone-capture-owi5vfwija-uc.a.run.app";
 const PROXY = API + "/v1/capture";
 let ckUser = "";
 function deviceID() {
@@ -1107,19 +1132,9 @@ function planActions(agent) {
     } else if (a.type === "complete_task") {
       for (const r of targets) {
         const fields = { CD_completedAt:{ value: Date.now() } };
-        const rule = ruleOf(r), due = dueOf(r);
-        if (rule && due) {
-          const seriesID = fieldOf(r, "CD_recurrenceSeriesID") || fieldOf(r, "CD_id");
-          const next = nextAfterNow(rule, due);
-          if (next !== null) {
-            fields.CD_recurrenceSeriesID = { value: seriesID };
-            creates.push({ operationType:"create", record:{ recordType:"CD_TodoTask", fields: {
-              CD_title:{ value: titleOf(r) }, CD_id:{ value: crypto.randomUUID().toUpperCase() },
-              CD_entityName:{ value:"TodoTask" }, CD_createdAt:{ value: Date.now() }, CD_dueAt:{ value: next },
-              ...tagsField(tagsOf(r)), ...ruleFields(rule),
-              CD_recurrenceSeriesID:{ value: seriesID }, CD_recurrenceParentID:{ value: fieldOf(r, "CD_id") } } } });
-          }
-        }
+        // The same next-occurrence rule as the check box, including "already filed".
+        const rec = recurrenceOps(r, Date.now());
+        if (rec) { Object.assign(fields, rec.fields); creates.push(rec.create); }
         upd(r, fields);
       }
     } else if (a.type === "reschedule_task") {
@@ -1187,7 +1202,8 @@ async function capture(utterance, audioB64) {
 
   let agent;
   try { agent = JSON.parse(resp.candidates[0].content.parts[0].text); }
-  catch (e) { busy = false; result("error"); logError("capture", "unreadable reply: " + e.message, { where: "capture parse" }); say("I couldn't read the reply. Nothing was filed."); return; }
+  // Only the error's name: a JSON.parse message quotes the input, which is the model's text.
+  catch (e) { busy = false; result("error"); logError("capture", "unreadable reply: " + e.name, { where: "capture parse" }); say("I couldn't read the reply. Nothing was filed."); return; }
   // The model writes what it heard before it acts. No words → nothing is filed,
   // whatever it put in `actions` (silence used to come back as "buy onions").
   if ("transcript" in agent && nothingHeard(agent.transcript)) {
@@ -1207,8 +1223,8 @@ async function capture(utterance, audioB64) {
   if (clearing) deleteRecords(clearing.list, (agent.reply ? agent.reply + " " : "") + clearing.text);
   else say(agent.reply || "Filed.", "said");
   refreshQuota();
-  // Reconcile with the server once it has caught up.
-  setTimeout(refresh, 2500);
+  // Reconcile with the server once it has caught up — unless an editor or the mic is open by then.
+  setTimeout(() => { if (canAutoRefresh()) refresh(); }, 2500);
 }
 
 /* ---- microphone: click to talk, click to send ------------------------ */
@@ -1317,8 +1333,10 @@ $("signout").onclick = () => {
   location.reload();
 };
 /* A task completed on the phone or the Mac has to show up here without a reload,
-   so re-query when the tab regains attention and every six seconds while visible.
-   Never while a capture is in flight or the mic is open. */
+   so re-query when the tab regains attention, every six seconds while visible, and
+   2.5 s after a capture. Never while a capture is in flight, the mic is open or a
+   task is being edited; one query at a time, and a poll that was already out when
+   an editor opened leaves the list alone (refresh() checks again before it renders). */
 function canAutoRefresh() {
   // Nor while a task is open for editing: a re-render would throw away what is typed.
   return document.visibilityState === "visible" && !busy && !rec && !!session() && !document.querySelector(".editor");
@@ -1342,9 +1360,15 @@ document.addEventListener("keydown", e => {
   track("app_open", { kind: "launch", door: "web" });
   if (!window.TODID_CK_TOKEN) { show("setup"); return; }
   const params = new URLSearchParams(location.search);
-  const fromURL = params.get("ckSession");
+  let fromURL = params.get("ckSession");
   if (fromURL) {
-    try { localStorage.setItem("ckSession", fromURL); } catch {}
+    // Only a sign-in this tab started may hand over a session. Apple sends the token
+    // back in the URL, so a link someone else made with ?ckSession= would otherwise
+    // sign the reader in as the sender; the flag set before leaving tells the two apart.
+    let started = false;
+    try { started = sessionStorage.getItem("todidSignin") === "1"; sessionStorage.removeItem("todidSignin"); } catch {}
+    if (started) { try { localStorage.setItem("ckSession", fromURL); } catch {} }
+    else fromURL = null;
     history.replaceState(null, "", location.pathname);
   }
   if (session()) {
@@ -1372,7 +1396,11 @@ document.addEventListener("keydown", e => {
   $("signinBtn").onclick = async () => {
     const r = await fetch(api("users/current"));
     const j = await r.json().catch(() => ({}));
-    if (j.redirectURL) { track("sign_in", { action: "started" }); location.href = j.redirectURL; }
+    if (j.redirectURL) {
+      track("sign_in", { action: "started" });
+      try { sessionStorage.setItem("todidSignin", "1"); } catch {}  // boot() honours ?ckSession= only with this
+      location.href = j.redirectURL;
+    }
     else track("sign_in", { action: "failed" }), logError("signin", "no redirectURL, status " + r.status, { where: "users/current" }), $("signinErr").textContent = "Couldn't reach Apple sign-in (" + r.status + ")";
   };
 })();
