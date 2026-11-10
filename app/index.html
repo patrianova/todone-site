@@ -541,10 +541,16 @@ function ruleFields(rule) {
 function isoWeekday(d) { const w = d.getDay(); return w === 0 ? 7 : w; }
 // The phone's Calendar arithmetic: a month or a year on from a day the target month
 // lacks lands on that month's last day (31 Jan → 28 Feb), never spills into the next.
+// A monthly task on its month's last day stays on the last day (31 Jan → 28 Feb → 31 Mar);
+// otherwise one short month pinned it to the 28th for good. The iPhone applies the same rule.
 function nextDate(rule, fromMs) {
   const d = new Date(fromMs), day = d.getDate();
   if (rule.frequency === "daily")   { d.setDate(d.getDate() + rule.interval); return d.getTime(); }
-  if (rule.frequency === "monthly") { d.setMonth(d.getMonth() + rule.interval); if (d.getDate() !== day) d.setDate(0); return d.getTime(); }
+  if (rule.frequency === "monthly") {
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() === day;
+    if (lastDay) { d.setDate(1); d.setMonth(d.getMonth() + rule.interval + 1, 0); return d.getTime(); }
+    d.setMonth(d.getMonth() + rule.interval); if (d.getDate() !== day) d.setDate(0); return d.getTime();
+  }
   if (rule.frequency === "yearly")  { d.setFullYear(d.getFullYear() + rule.interval); if (d.getDate() !== day) d.setDate(0); return d.getTime(); }
   const wanted = rule.weekdays.length ? rule.weekdays : [isoWeekday(d)];
   // "Every other week" counts weeks as the phone does, from the locale's first weekday.
@@ -1070,12 +1076,17 @@ function deviceID() {
     return d;
   } catch { return "web-anon"; }
 }
-function isoNow() {
-  const d = new Date(), off = -d.getTimezoneOffset();
+// Local wall time with its offset, the way the phone sends dates: toISOString() is UTC,
+// so an evening task reached the model dated the next day.
+function isoLocal(d) {
+  const off = -d.getTimezoneOffset();
   const p = n => String(Math.abs(n)).padStart(2, "0");
-  const weekday = d.toLocaleDateString("en-US", { weekday:"long" });
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
-         `${off>=0?"+":"-"}${p(Math.floor(Math.abs(off)/60))}:${p(Math.abs(off)%60)} (${weekday})`;
+         `${off>=0?"+":"-"}${p(Math.floor(Math.abs(off)/60))}:${p(Math.abs(off)%60)}`;
+}
+function isoNow() {
+  const d = new Date();
+  return `${isoLocal(d)} (${d.toLocaleDateString("en-US", { weekday:"long" })})`;
 }
 let idMap = {};
 function contextBlock(utterance) {
@@ -1087,7 +1098,7 @@ function contextBlock(utterance) {
   if (!open.length) lines.push("(none)");
   open.forEach((r, i) => {
     const sid = "T" + (i + 1); idMap[sid] = r;
-    const due = dueOf(r) ? new Date(dueOf(r)).toISOString() : "none";
+    const due = dueOf(r) ? isoLocal(new Date(dueOf(r))) : "none";
     const tags = tagsOf(r);
     lines.push(`${sid} | ${titleOf(r)} | due: ${due} | tags: ${tags.length ? tags.join(",") : "none"}`);
   });
@@ -1308,6 +1319,8 @@ async function micToggle() {
     // Only the clock changes: rebuilding the status would reset the meter.
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - t0) / 1000), t = $("status").querySelector(".text");
+      // The Mac's safety cap: two minutes, then it stops and sends what was said.
+      if (s >= 120) { if (rec) micToggle(); return; }
       if (t && t.firstChild) t.firstChild.nodeValue = `Listening — ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
     }, 500);
   } catch (e) {
